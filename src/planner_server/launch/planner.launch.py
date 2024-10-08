@@ -48,5 +48,6 @@ def generate_launch_description():
                         {'node_names': ['planner_server',
                                         'controller_server', 
                                         'bt_navigator',
-                                        'recoveries_server']}])
+                                        'recoveries_server'
+                                        ]}])
     ])

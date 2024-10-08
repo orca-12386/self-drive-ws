@@ -458,8 +458,10 @@ class GoalCalculator(Node):
         return goal_pose
 
     def publish_goal(self, goal_pose):
+        parsed_goal = parse_message(goal_pose, PoseStamped)
         GoalCalculator.publishing["goal_pose"].publish(goal_pose)
-        GoalCalculator.goals.append(parse_message(goal_pose, PoseStamped))
+        if len(GoalCalculator.goals)<=1 or calculate_distance(GoalCalculator.goals[-1], parsed_goal)>GoalCalculator.config["goal_logger_in_between_distance"]: 
+            GoalCalculator.goals.append(parsed_goal)
         self.get_logger().info(f"Published goal: {goal_pose}")
 
 
