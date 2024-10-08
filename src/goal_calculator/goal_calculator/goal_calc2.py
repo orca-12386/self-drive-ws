@@ -106,7 +106,26 @@ class Subscription:
     def parse_message(self, message, datatype = None):
         if datatype == None:
             datatype = self.datatype
-        return parse_message(message, datatype)
+        parsed_message = parse_message(message, datatype)
+        # if self.topic == "map" and type(parsed_message) is np.ndarray:
+        #     resolution = self.get_latest_message().info.resolution
+        #     data = GoalCalculator.subscribed["robot_pose_grid"].get_latest_data()
+        #     local_map_dim = (GoalCalculator.config["local_map_dim"]/resolution)
+        #     diff = int(local_map_dim/2)
+        #     if not (data is None):
+        #         data = [int(d) for d in data]
+        #         if len(parsed_message)>local_map_dim:
+        #             if len(parsed_message[0])>local_map_dim:
+        #                 starty = data[1]-diff
+        #                 startx = data[0]-diff
+        #                 endy = data[1]+diff
+        #                 endx = data[0]+diff
+        #                 if starty<0:
+        #                     starty = 0
+        #                 if startx<0:
+        #                     startx = 0
+        #                 parsed_message = parsed_message[starty:endy,startx:endx]
+        return parsed_message
 
     def get_all_data(self):
         if len(self.messages) > 0:
@@ -288,18 +307,18 @@ class GoalCalculator(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         
         subscription_info = {
-            "map": OccupancyGrid,
-            "odom": Odometry,
-            "robot_pose_global": PoseStamped,
-            "robot_pose_grid": PoseStamped,
-            "robot_orientation": Float64
+            "map": ["local_map", OccupancyGrid],
+            "odom": ["odom", Odometry],
+            "robot_pose_global": ["robot_pose_global", PoseStamped],
+            "robot_pose_grid": ["robot_pose_grid", PoseStamped],
+            "robot_orientation": ["robot_orientation", Float64]
         }
         publisher_info = {
-            "goal_pose": PoseStamped
+            "goal_pose": ["goal_pose", PoseStamped]
         }
         
-        create_subscriber = lambda topic: self.create_subscription(subscription_info[topic], topic, lambda msg: self.topic_callback(topic, msg), 10)
-        create_publisher = lambda topic: self.create_publisher(publisher_info[topic], topic, 10)
+        create_subscriber = lambda topic: self.create_subscription(subscription_info[topic][1], subscription_info[topic][0], lambda msg: self.topic_callback(topic, msg), 10)
+        create_publisher = lambda topic: self.create_publisher(publisher_info[topic][1], publisher_info[topic][0], 10)
         GoalCalculator.subscribed = dict()
         GoalCalculator.publishing = dict()
         
@@ -308,7 +327,7 @@ class GoalCalculator(Node):
                 length = GoalCalculator.config["bot_orientation_messages_maxlength"]
             else:
                 length = 1
-            GoalCalculator.subscribed[topic] = Subscription(topic, subscription_info[topic], create_subscriber(topic), length)
+            GoalCalculator.subscribed[topic] = Subscription(subscription_info[topic][0], subscription_info[topic][1], create_subscriber(topic), length)
             self.get_logger().info("Subscribed to "+topic)
         self.get_logger().info("Subscriptions created")
 
@@ -337,6 +356,8 @@ class GoalCalculator(Node):
         robot_coords_grid = GoalCalculator.subscribed["robot_pose_grid"].get_latest_data()
         robot_coords_global = GoalCalculator.subscribed["robot_pose_global"].get_latest_data()
         map_data = GoalCalculator.subscribed["map"].get_latest_data()
+        if not (map_data is None):
+            self.get_logger().info("Local map shape: "+str(map_data.shape))
         if robot_coords_grid == None or map_data is None:
             self.get_logger().info("Not enough information to search and publish yet.")
             return

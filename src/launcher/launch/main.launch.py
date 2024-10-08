@@ -44,9 +44,16 @@ def generate_launch_description():
         name='robot_pose_publisher'
     )
 
+    local_mapper_node = Node(
+        package='local_costmap',
+        executable='local_costmap_node',
+        name='local_costmap_node'
+    )
+
     ld = LaunchDescription()
     
     ld.add_action(mapper_node)
+    ld.add_action(local_mapper_node)
     ld.add_action(planner_launch)
     ld.add_action(ramp_goals_node)
     ld.add_action(robot_pose_publisher_node)
