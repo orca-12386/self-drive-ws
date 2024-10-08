@@ -154,11 +154,20 @@ class CandidateGoal:
         robot_coords_global = GoalCalculator.subscribed["robot_pose_global"].get_latest_data()
         return calculate_distance(self.coords, robot_coords_global)
 
+    def check_obstacle(self):
+        map_data = GoalCalculator.subscribed["map"].get_latest_data()
+        goal_coords_grid = [int(d) for d in convert_to_grid_coords(self.coords)]
+        if map_data[goal_coords_grid[1]][goal_coords_grid[0]] > 0:
+            return True
+        else:
+            return False
+
     def validate(self):
         condition = True
         condition = condition and self.goal_angle > GoalCalculator.config["goal_angle_threshold"]
         condition = condition and self.robot_distance < GoalCalculator.config["goal_distance_max"]
         condition = condition and self.robot_distance > GoalCalculator.config["goal_distance_min"]
+        condition = condition and self.check_obstacle() == False
         return condition
         # goal angle threshold
         # distance threshold
@@ -177,7 +186,7 @@ class CandidateGoal:
         self.goal_angle = self.calculate_goal_angle()
         self.parent_distance = self.calculate_parent_distance()
         self.robot_distance = self.calculate_robot_distance()
-        self.heuristic = self.calculate_heuristic()
+        self.heuristic = self.calculate_heuristic()        
 
 
 # class NearestPairsIterator:
