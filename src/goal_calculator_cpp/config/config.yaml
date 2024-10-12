@@ -1,0 +1,25 @@
+controller_interval: 0.1
+
+bot_orientation_messages_maxlength: 6
+
+shutdown_coords_global: [10.981856913385355, 20.638044400288646]
+shutdown_tolerance_distance: 9
+resume_coords_global: [-14.127625860234343, 21.478713612828365]
+resume_tolerance_distance: 1
+
+start_goal_distance: 5
+resume_goal_distance: 5
+
+goal_angle_threshold: 100
+goal_distance_max: 14
+goal_distance_min: 3
+goal_logger_in_between_distance: 2
+
+dbscan_eps: 3
+dbscan_min_samples: 3
+
+midpoint_tolerance: 0.1
+
+minimum_points: 200
+
+local_map_dim: 15

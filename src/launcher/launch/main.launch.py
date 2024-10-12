@@ -16,7 +16,7 @@ def generate_launch_description():
         ])
     )
 
-    goal_calc_launch = IncludeLaunchDescription(
+    goal_calc_py_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             PathJoinSubstitution([
                 FindPackageShare('goal_calculator'),
@@ -24,6 +24,18 @@ def generate_launch_description():
                 'goalcalc.launch.py'
             ])
         ])
+    )
+
+    goal_calc_cpp_node = Node(
+        package='goal_calculator_cpp',
+        executable='goal_calculator_node',
+        name='goal_calculator_node'
+    )
+
+    mapper_node = Node(
+        package='mapping',
+        executable='Mapper',
+        name='mapper_node'
     )
 
     mapper_node = Node(
@@ -57,6 +69,7 @@ def generate_launch_description():
     ld.add_action(planner_launch)
     ld.add_action(ramp_goals_node)
     ld.add_action(robot_pose_publisher_node)
-    ld.add_action(goal_calc_launch)
+    ld.add_action(goal_calc_py_launch)
+    # ld.add_action(goal_calc_cpp_node)
     
     return ld
