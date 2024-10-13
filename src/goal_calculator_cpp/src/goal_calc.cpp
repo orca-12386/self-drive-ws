@@ -22,7 +22,10 @@
 #include <memory>
 #include <iostream>
 #include <iomanip>
-
+#include <stdexcept>
+#include <rclcpp/rclcpp.hpp>
+#include <unordered_set>
+#include <unordered_map>
 
 using namespace std;
 
@@ -44,20 +47,26 @@ class GoalCalculator;
 class Config {
     public:
         static YAML::Node config;
-        static vector<Point> goals;
-        static rclcpp::Node* nodeptr;
         Config() {
             // std::string config_path = ament_index_cpp::get_package_share_directory("goal_calculator_cpp") + "/config/config.yaml";
             std::string config_path = "/mnt/d/ros2-igvc-autonav-sim/src/goal_calculator_cpp/config/config.yaml";
             config = YAML::LoadFile(config_path);
         }
-        static void write_info(const std::string& log) {
+};
+
+YAML::Node Config::config;
+
+class NodeGlobal {
+    public:
+        static vector<Point> goals;
+        static rclcpp::Node* nodeptr;
+        static void log_info(const std::string& log) {
             RCLCPP_INFO(nodeptr->get_logger(), "%s", log.c_str());
         }
 };
-YAML::Node Config::config;
-vector<Point> Config::goals;
-rclcpp::Node* Config::nodeptr;
+
+vector<Point> NodeGlobal::goals;
+rclcpp::Node* NodeGlobal::nodeptr;
 
 class Point {
     public:
@@ -97,77 +106,104 @@ class Point {
             return angleDeg;
         }
 
-        Point convert_to_global_coords(nav_msgs::msg::OccupancyGrid map_message) {
-            Point origin = Point((double) map_message.info.origin.position.x, (double) map_message.info.origin.position.y);
-            Point newcoord = Point(origin.x+(map_message.info.resolution*this->x), origin.y+(map_message.info.resolution*this->y));
+        Point convert_to_global_coords(nav_msgs::msg::OccupancyGrid::SharedPtr map_message) {
+            Point origin = Point((double) map_message->info.origin.position.x, (double) map_message->info.origin.position.y);
+            Point newcoord = Point(origin.x+((double)map_message->info.resolution*this->x), origin.y+((double)map_message->info.resolution*this->y));
             return newcoord;
         }
 
-        Point convert_to_grid_coords(nav_msgs::msg::OccupancyGrid map_message) {
-            Point origin = Point((double) map_message.info.origin.position.x, (double) map_message.info.origin.position.y);
-            Point newcoord = Point(-origin.x+(this->x/map_message.info.resolution), -origin.y+(this->y/map_message.info.resolution));
+        Point convert_to_grid_coords(nav_msgs::msg::OccupancyGrid::SharedPtr map_message) {
+            Point origin = Point((double) map_message->info.origin.position.x, (double) map_message->info.origin.position.y);
+            Point newcoord = Point((-origin.x+this->x)/(double)map_message->info.resolution, (-origin.y+this->y)/(double)map_message->info.resolution);
             return newcoord;
         }
 };
 
-vector<vector<Point>> dbscan( vector<vector<int>>& grid, double eps, int minPts) {
-    int rows = grid.size();
-    int cols = grid[0].size();
-    vector<vector<bool>> visited(rows, vector<bool>(cols, false));
-    vector<vector<Point>> clusters;
 
-    auto is_valid = [&](int x, int y) {
-        return x >= 0 && x < rows && y >= 0 && y < cols;
-    };
+struct PointHash {
+    size_t operator()(const Point& p) const {
+        return std::hash<double>()(p.x) ^ std::hash<double>()(p.y);
+    }
+};
 
-    auto get_neighbors = [&](int x, int y) {
-        vector<Point> neighbors;
-        for (int dx = -1; dx <= 1; ++dx) {
-            for (int dy = -1; dy <= 1; ++dy) {
-                if (dx == 0 && dy == 0) continue;
-                int nx = x + dx, ny = y + dy;
-                if (is_valid(nx, ny) && grid[nx][ny] == 1) {
-                    neighbors.emplace_back(nx, ny);
-                }
-            }
-        }
-        return neighbors;
-    };
+struct PointEqual {
+    bool operator()(const Point& lhs, const Point& rhs) const {
+        return lhs.x == rhs.x && lhs.y == rhs.y;
+    }
+};
 
-    function<void(int, int, vector<Point>&)> expand_cluster = [&](int x, int y, vector<Point>& cluster) {
-        cluster.emplace_back(x, y);
-        visited[x][y] = true;
-
-        vector<Point> neighbors = get_neighbors(x, y);
-        if (neighbors.size() >= minPts) {
-            for ( auto& neighbor : neighbors) {
-                if (!visited[neighbor.x][neighbor.y]) {
-                    expand_cluster(neighbor.x, neighbor.y, cluster);
-                }
-            }
-        }
-    };
-
-    for (int i = 0; i < rows; ++i) {
-        for (int j = 0; j < cols; ++j) {
-            if (!visited[i][j] && grid[i][j] == 1) {
-                vector<Point> cluster;
-                expand_cluster(i, j, cluster);
-                if (cluster.size() >= minPts) {
-                    clusters.push_back(cluster);
-                }
-            }
+std::vector<Point*> regionQuery(const std::unordered_map<Point, Point*, PointHash, PointEqual>& point_map, Point point, double eps) {
+    std::vector<Point*> neighbors;
+    for (const auto& pair : point_map) {
+        if (point.calculate_distance(pair.first) <= eps) {
+            neighbors.push_back(pair.second);
         }
     }
+    return neighbors;
+}
 
-    // Sort clusters by size in descending order
-    sort(clusters.begin(), clusters.end(), []( vector<Point>& a,  vector<Point>& b) {
-        return a.size() > b.size();
-    });
+std::vector<std::vector<Point>> dbscan(const std::vector<Point>& points, double eps, int minPts) {
+    std::vector<std::vector<Point>> clusters;
+    std::unordered_map<Point, Point*, PointHash, PointEqual> point_map;
+    std::unordered_set<Point*> visited;
+    
+    // Create a map for faster point lookup
+    for (const auto& point : points) {
+        point_map[point] = const_cast<Point*>(&point);
+    }
+    
+    for (const auto& pair : point_map) {
+        Point* point = pair.second;
+        if (visited.find(point) != visited.end()) continue;
+        
+        visited.insert(point);
+        std::vector<Point*> neighbors = regionQuery(point_map, *point, eps);
+        
+        if (neighbors.size() < minPts) continue;
+        
+        std::vector<Point> cluster;
+        cluster.push_back(*point);
+        
+        for (size_t i = 0; i < neighbors.size(); ++i) {
+            if (visited.find(neighbors[i]) != visited.end()) continue;
+            
+            visited.insert(neighbors[i]);
+            std::vector<Point*> neighborPts = regionQuery(point_map, *neighbors[i], eps);
+            
+            if (neighborPts.size() >= minPts) {
+                neighbors.insert(neighbors.end(), neighborPts.begin(), neighborPts.end());
+            }
+            
+            cluster.push_back(*neighbors[i]);
+        }
+        
+        clusters.push_back(cluster);
+    }
+    
+    return clusters;
+}
 
-    // Return the top 2 largest clusters
-    return vector<vector<Point>>(clusters.begin(), clusters.begin() + min(2, static_cast<int>(clusters.size())));
-};
+std::pair<std::vector<Point>, std::vector<Point>> getTopTwoClusters(const std::vector<Point>& points, double eps, int minPts) {
+    std::vector<std::vector<Point>> clusters = dbscan(points, eps, minPts);
+    
+    std::sort(clusters.begin(), clusters.end(), 
+              [](const std::vector<Point>& a, const std::vector<Point>& b) {
+                  return a.size() > b.size();
+              });
+
+    std::vector<Point> largest;
+    std::vector<Point> secondLargest;
+
+    if (!clusters.empty()) {
+        largest = std::move(clusters[0]);
+    }
+
+    if (clusters.size() > 1) {
+        secondLargest = std::move(clusters[1]);
+    }
+
+    return std::make_pair(std::move(largest), std::move(secondLargest));
+}
 
 
 struct PointPair {
@@ -234,42 +270,42 @@ vector<PointPair> findNearestPointPairs( vector<Point>& vec1,  vector<Point>& ve
 
 class MessageBase {
     public:
-        static vector<vector<int>> parse_message(nav_msgs::msg::OccupancyGrid m) {
-            Config::write_info("frame_id: " + m.header.frame_id);
-            Config::write_info("frame_id length: "+ m.header.frame_id.length());
+        static vector<vector<int>> parse_message(nav_msgs::msg::OccupancyGrid::SharedPtr m) {
+            // NodeGlobal::log_info("frame_id: " + m->header.frame_id);
+            // NodeGlobal::log_info("frame_id length: "+ m->header.frame_id.length());
             // if (m.header.frame_id.length() > 1000) {  // Adjust this limit as needed
             //     throw std::length_error("frame_id is too long: " + std::to_string(m.header.frame_id.length()));
             // }
-            int h = m.info.height;
-            int w = m.info.width;
+            int h = m->info.height;
+            int w = m->info.width;
             if (h <= 0 || w <= 0 || h > 100000 || w > 100000) {
                 throw std::runtime_error("Invalid grid dimensions: " + std::to_string(h) + "x" + std::to_string(w));
             }
-            if (m.data.size() != static_cast<size_t>(h * w)) {
-                throw std::runtime_error("Grid data size mismatch: expected " + std::to_string(h * w) + ", got " + std::to_string(m.data.size()));
+            if (m->data.size() != static_cast<size_t>(h * w)) {
+                throw std::runtime_error("Grid data size mismatch: expected " + std::to_string(h * w) + ", got " + std::to_string(m->data.size()));
             }
             vector<vector<int>> grid(h, vector<int>(w));
             for (int i = 0; i < h; i++) {
                 for (int j = 0; j < w; j++) {
-                    grid[i][j] = m.data[i * w + j];
+                    grid[i][j] = m->data[i * w + j];
                 }
             }
             return grid;
         }
-        static Point parse_message(geometry_msgs::msg::PoseStamped m) {
-            Config::write_info("frame_id: " + m.header.frame_id);
-            Config::write_info("frame_id length: "+ m.header.frame_id.length());
+        static Point parse_message(geometry_msgs::msg::PoseStamped::SharedPtr m) {
+            // NodeGlobal::log_info("frame_id: " + m->header.frame_id);
+            // NodeGlobal::log_info("frame_id length: "+ m->header.frame_id.length());
 
             // if (m.header.frame_id.length() > 1000) {  // Adjust this limit as needed
             //     throw std::length_error("PoseStamped frame_id is too long: " + std::to_string(m.header.frame_id.length()));
             // }
 
-            double x = m.pose.position.x;
-            double y = m.pose.position.y;
+            double x = m->pose.position.x;
+            double y = m->pose.position.y;
             return Point(x, y);
         }
-        static double parse_message(std_msgs::msg::Float64 m) {
-            return m.data;
+        static double parse_message(std_msgs::msg::Float64::SharedPtr m) {
+            return m->data;
         }
 };
 
@@ -285,74 +321,130 @@ public:
 };
 
 
-template <class messageDatatype, class parsedDatatype> 
-class Subscription {
-    public:
-        string alias;
-        string topic;
-        int maxlength;
-        bool received;
-        deque<messageDatatype> messages;
-        static map<std::string, Subscription<messageDatatype, parsedDatatype>*> subs;
-        using subdatatype = typename rclcpp::Subscription<messageDatatype>::SharedPtr;
-        subdatatype sub;
-        Subscription(string alias, string topic, int maxlength, rclcpp::Node* parentNode) {
-            this->alias = alias;
-            this->topic = topic;
-            this->maxlength = maxlength;
-            this->sub = parentNode->create_subscription<messageDatatype>(
-                topic, 10, std::bind(&Subscription::set_message, this, std::placeholders::_1));
-            // subs[alias] = this;
-            this->received = false;
-        }
-        using messageshptr = typename messageDatatype::SharedPtr;
-        void set_message(messageshptr message) {
-            messages.push_back(*message);
-            if(messages.size()>maxlength) {
-                messages.pop_front();
-            }
-            if(this->received == false) {
-                this->received = true;
-            }
-        }
-        deque<messageDatatype> get_all_messages() {
-            return messages;
-        }
-        messageDatatype get_latest_message() {
-            return messages.back();
-        }
-        vector<parsedDatatype> get_all_data() {
-            vector<parsedDatatype> datas;
-            for(messageDatatype& message: messages) {
-                datas.push_back(MessageBase::parse_message(message));
-            }
-            return datas;
-        }
-        parsedDatatype get_latest_data() {
-            return MessageBase::parse_message(messages.back());
-        }
-};
+// template <class messageDatatype, class parsedDatatype>
+// class Subscription {
+//     public:
+//         string alias;
+//         string topic;
+//         int maxlength;
+//         bool received;
+//         using msgSharedPtr = typename messageDatatype::SharedPtr;
+//         deque<msgSharedPtr> messages;
+//         static map<std::string, Subscription<messageDatatype, parsedDatatype>*> subs;
+//         using subdatatype = typename rclcpp::Subscription<messageDatatype>::SharedPtr;
+//         subdatatype sub;
+//         Subscription(string alias, string topic, int maxlength, rclcpp::Node* parentNode) : alias(alias), topic(topic), maxlength(maxlength), received(false) {
+//             this->sub = parentNode->create_subscription<messageDatatype>(
+//                 topic, 10, std::bind(&Subscription::set_message, this, std::placeholders::_1));
+//         }
+//         void set_message(msgSharedPtr message) {
+//             messages.push_back(message);
+//             if(messages.size()>maxlength) {
+//                 messages.pop_front();
+//             }
+//             if(this->received == false) {
+//                 this->received = true;
+//             }
+//         }
+//         deque<msgSharedPtr> get_all_messages() {
+//             return messages;
+//         }
+//         msgSharedPtr get_latest_message() {
+//             return messages.back();
+//         }
+//         vector<parsedDatatype> get_all_data() {
+//             vector<parsedDatatype> datas;
+//             for(msgSharedPtr& message: messages) {
+//                 datas.push_back(MessageBase::parse_message(message));
+//             }
+//             return datas;
+//         }
+//         parsedDatatype get_latest_data() {
+//             return MessageBase::parse_message(messages.back());
+//         }
+// };
 
 template <class messageDatatype, class parsedDatatype>
-map<string, Subscription<messageDatatype, parsedDatatype>*> Subscription<messageDatatype, parsedDatatype>::subs;
+class Subscription {
+public:
+    using msgSharedPtr = typename messageDatatype::SharedPtr;
+    using subdatatype = typename rclcpp::Subscription<messageDatatype>::SharedPtr;
+
+    std::string alias;
+    std::string topic;
+    int maxlength;
+    bool received;
+    std::deque<msgSharedPtr> messages;
+    subdatatype sub;
+    static std::map<std::string, std::shared_ptr<Subscription<messageDatatype, parsedDatatype>>> subs;
+
+    Subscription(std::string alias, std::string topic, int maxlength, rclcpp::Node* parentNode)
+        : alias(std::move(alias)), topic(std::move(topic)), maxlength(maxlength), received(false) {
+        sub = parentNode->create_subscription<messageDatatype>(
+            this->topic, 10, std::bind(&Subscription::set_message, this, std::placeholders::_1));
+    }
+
+    void set_message(const msgSharedPtr message) {
+        messages.push_back(message);
+        if (messages.size() > maxlength) {
+            messages.pop_front();
+        }
+        received = true;
+    }
+
+    std::deque<msgSharedPtr> get_all_messages() const {
+        return messages;
+    }
+
+    msgSharedPtr get_latest_message() const {
+        if (messages.empty()) {
+            throw std::runtime_error("No messages available");
+        }
+        return messages.back();
+    }
+
+    std::vector<parsedDatatype> get_all_data() const {
+        std::vector<parsedDatatype> datas;
+        for (const auto& message : messages) {
+            datas.push_back(MessageBase::parse_message(message));
+        }
+        return datas;
+    }
+
+    parsedDatatype get_latest_data() const {
+        if (messages.empty()) {
+            throw std::runtime_error("No messages available");
+        }
+        return MessageBase::parse_message(messages.back());
+    }
+
+    static std::shared_ptr<Subscription> get_subscription(const std::string& alias) {
+        auto it = subs.find(alias);
+        return (it != subs.end()) ? it->second : nullptr;
+    }
+};
+
+template<class messageDatatype, class parsedDatatype>
+std::map<std::string, std::shared_ptr<Subscription<messageDatatype, parsedDatatype>>> Subscription<messageDatatype, parsedDatatype>::subs;
+
+
+// template <class messageDatatype, class parsedDatatype>
+// map<string, Subscription<messageDatatype, parsedDatatype>*> Subscription<messageDatatype, parsedDatatype>::subs;
 
 template <class messageDatatype>
 class Publishing {
     public:
-        static map<std::string, Publishing*> pubs;
+        static map<std::string, std::shared_ptr<Publishing>> pubs;
         string topic;
         string alias;
         typename rclcpp::Publisher<messageDatatype>::SharedPtr pub;
-        Publishing(string alias, string topic, rclcpp::Node* parentNode) {
-            this->topic = topic;
-            this->alias = alias;
+        Publishing(string alias, string topic, rclcpp::Node* parentNode) : topic(topic), alias(alias) {
             this->pub = parentNode->create_publisher<messageDatatype>(this->topic, 10);
-            // pubs[alias] = this;
         }
 };
 
 template <class messageDatatype>
-map<string, Publishing<messageDatatype>*> Publishing<messageDatatype>::pubs;
+map<string, std::shared_ptr<Publishing<messageDatatype>>> Publishing<messageDatatype>::pubs;
 
 
 class CandidateGoal : public Point {
@@ -378,19 +470,22 @@ class CandidateGoal : public Point {
             return this->parent1.calculate_distance(this->parent2);
         }
         double calculate_goal_angle() {
-            return this->calculate_angle(Config::goals.end()[-1], Config::goals.end()[-2]);
+            return this->calculate_angle(NodeGlobal::goals.end()[-1], NodeGlobal::goals.end()[-2]);
         }
-        bool check_obstacle() {
-            vector<vector<int>> map_data = Subscription<nav_msgs::msg::OccupancyGrid,vector<vector<int>>>::subs["map"]->get_latest_data();
-            return (map_data[this->y][this->x] > 0);
+        bool is_obstacle() {
+            nav_msgs::msg::OccupancyGrid::SharedPtr map_message = Subscription<nav_msgs::msg::OccupancyGrid,vector<vector<int>>>::subs["map"]->get_latest_message();
+            vector<vector<int>> map_data = MessageBase::parse_message(map_message);
+            Point grid_coords = this->convert_to_grid_coords(map_message);
+            return (map_data[(int)grid_coords.y][(int)grid_coords.x] > 0);
+            // return true;
         }
         bool validate() {
             bool condition = true;
-            condition = condition && this->check_obstacle();
+            // condition = condition && !(this->is_obstacle());
             condition = condition && this->robot_distance < Config::config["goal_distance_max"].as<double>();
             condition = condition && this->robot_distance > Config::config["goal_distance_min"].as<double>();
             condition = condition && this->goal_angle > Config::config["goal_angle_threshold"].as<double>();
-            condition = condition && this->parent_distance != 0; //to prevent zero division error in heuristic
+            condition = condition && this->parent_distance != 0.0; //to prevent zero division error in heuristic
             return condition;
         }
         double calculate_heuristic() {
@@ -411,7 +506,7 @@ class GoalCalculator : public rclcpp::Node {
 
         GoalCalculator() : Node("goal_calculator_cpp_node") {
             
-            Config::nodeptr = this;
+            NodeGlobal::nodeptr = this;
 
             start = true;
             shutdown = false;
@@ -421,6 +516,11 @@ class GoalCalculator : public rclcpp::Node {
             this->create_sub<geometry_msgs::msg::PoseStamped, Point>("robot_pose_global", "/robot_pose_global", 1);
             this->create_sub<std_msgs::msg::Float64, double>("robot_orientation", "/robot_orientation", 10); 
             RCLCPP_INFO(this->get_logger(), "Subscribed to all topics"); 
+
+            for(auto const& sub : Subscription<nav_msgs::msg::OccupancyGrid, vector<vector<int>>>::subs) {
+                NodeGlobal::log_info(sub.first);
+                NodeGlobal::log_info(sub.second->topic);
+            }
 
             this->create_pub<geometry_msgs::msg::PoseStamped>("goal_pose", "/goal_pose");
             RCLCPP_INFO(this->get_logger(), "Publishing to all topics"); 
@@ -433,61 +533,62 @@ class GoalCalculator : public rclcpp::Node {
         }
     private:
         template <class messageDatatype, class parsedDatatype>
-        void create_sub(const std::string& alias, const std::string& topic, int maxlength) {
+        void create_sub(const std::string alias, const std::string topic, int maxlength) {
             // using subdatatype = typename rclcpp::Subscription<messageDatatype>::SharedPtr;
-            Subscription<messageDatatype, parsedDatatype> s = Subscription<messageDatatype, parsedDatatype>(alias, topic, maxlength, this);
-            Subscription<messageDatatype, parsedDatatype>::subs[alias] = &s;
-            RCLCPP_INFO(this->get_logger(), "Subscribed to '%s'", topic.c_str()); 
+            auto s = std::make_shared<Subscription<messageDatatype, parsedDatatype>>(alias, topic, maxlength, this);
+            Subscription<messageDatatype, parsedDatatype>::subs[alias] = s;
+            RCLCPP_INFO(this->get_logger(), "Subscribed to '%s'", s->topic.c_str()); 
         }
         
         template <class messageDatatype>
-        void create_pub(const std::string& alias, const std::string& topic) {
+        void create_pub(const std::string alias, const std::string topic) {
             // using pubdatatype = typename rclcpp::Publisher<messageDatatype>::SharedPtr;
-            Publishing<messageDatatype> p = Publishing<messageDatatype>(alias, topic, this);
-            Publishing<messageDatatype>::pubs[alias] = &p; 
-            RCLCPP_INFO(this->get_logger(), "Publishing to '%s'", topic.c_str()); 
+            auto p = std::make_shared<Publishing<messageDatatype>>(alias, topic, this);
+            Publishing<messageDatatype>::pubs[alias] = p; 
+            RCLCPP_INFO(this->get_logger(), "Publishing to '%s'", p->topic.c_str()); 
         }
+
         void controller() {
-            Config::write_info("Controller is active");
+            NodeGlobal::log_info("Controller is active");
             bool topics_received = true;
             if(Subscription<geometry_msgs::msg::PoseStamped,Point>::subs["robot_pose_global"]->received == false) {
-                Config::write_info("robot_pose_global not found");
+                NodeGlobal::log_info("robot_pose_global not found");
                 topics_received = false;
             }
             if(Subscription<nav_msgs::msg::OccupancyGrid,vector<vector<int>>>::subs["map"]->received == false) {
-                Config::write_info("local_map not found");
+                NodeGlobal::log_info("local_map not found");
                 topics_received = false;
             }
             if(topics_received == false) {
-                Config::write_info("Not enough info to search and publish.");
+                NodeGlobal::log_info("Not enough info to search and publish.");
                 return;
             }
             Point robot_coords_global = Subscription<geometry_msgs::msg::PoseStamped,Point>::subs["robot_pose_global"]->get_latest_data();
             vector<vector<int>>map_data = Subscription<nav_msgs::msg::OccupancyGrid,vector<vector<int>>>::subs["map"]->get_latest_data();
             Point robot_coords_grid = Subscription<geometry_msgs::msg::PoseStamped,Point>::subs["robot_pose_grid"]->get_latest_data();            
-            Config::write_info("Local map shape: "+to_string(map_data.size())+"x"+to_string(map_data[0].size()));
+            NodeGlobal::log_info("Local map shape: "+to_string(map_data.size())+"x"+to_string(map_data[0].size()));
             if (this->start == true) {
-                Config::write_info("Publishing start goal");
-                Config::goals.push_back(robot_coords_global);
+                NodeGlobal::log_info("Publishing start goal");
+                NodeGlobal::goals.push_back(robot_coords_global);
                 this->start = false;
                 return;
             }
             this->check_shutdown();
             if (this->shutdown == true) {
-                Config::write_info("Goal calculator is shutdown");
+                NodeGlobal::log_info("Goal calculator is shutdown");
                 return;
             }
-            Config::write_info("Calculating goal pose");
+            NodeGlobal::log_info("Calculating goal pose");
             auto t1 = std::chrono::high_resolution_clock::now();
-            std::optional<geometry_msgs::msg::PoseStamped> goal_pose = this->get_goal_pose();
+            std::optional<geometry_msgs::msg::PoseStamped::SharedPtr> goal_pose = this->get_goal_pose();
             auto t2 = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double, std::milli> ms_double = t2 - t1;
             auto duration_secs = chrono::duration_cast<chrono::seconds>(ms_double);
             string duration_secs_str = to_string(duration_secs.count());   
             if(!goal_pose.has_value()) {
-                Config::write_info("No valid goal pose was found (Time taken: "+duration_secs_str+")");
+                NodeGlobal::log_info("No valid goal pose was found (Time taken: "+duration_secs_str+")");
             } else {
-                Config::write_info("Goal pose calculated (Time taken: )"+duration_secs_str+")");
+                NodeGlobal::log_info("Goal pose calculated (Time taken: )"+duration_secs_str+")");
                 this->publish_goal(goal_pose.value());
             }
         }
@@ -497,37 +598,37 @@ class GoalCalculator : public rclcpp::Node {
             double shutdown_tolerance_distance = Config::config["shutdown_tolerance_distance"].as<double>();
             double resume_tolerance_distance = Config::config["resume_tolerance_distance"].as<double>();
             double resume_goal_distance = Config::config["resume_goal_distance"].as<double>();
-            std::optional<Point> robot_coords_global = Subscription<geometry_msgs::msg::PoseStamped,Point>::subs["robot_pose_global"]->get_latest_data();
-            if(this->shutdown == false && robot_coords_global->calculate_distance(shutdown_coords_global)<shutdown_tolerance_distance) {
+            Point robot_coords_global = Subscription<geometry_msgs::msg::PoseStamped,Point>::subs["robot_pose_global"]->get_latest_data();
+            if(this->shutdown == false && robot_coords_global.calculate_distance(shutdown_coords_global)<shutdown_tolerance_distance) {
                 this->shutdown = true;
-                Config::write_info("Goal calculator shutdown");
+                NodeGlobal::log_info("Goal calculator shutdown");
             }
-            if(this->shutdown == true && robot_coords_global->calculate_distance(resume_coords_global)<resume_tolerance_distance) {
+            if(this->shutdown == true && robot_coords_global.calculate_distance(resume_coords_global)<resume_tolerance_distance) {
                 this->shutdown = false;
-                Config::write_info("Publishing resume goal");
-                Config::goals.clear();
-                Config::goals.push_back(resume_coords_global);
-                geometry_msgs::msg::PoseStamped resume_goal_pose = this->create_goal_pose(Point(resume_coords_global.x-resume_goal_distance, resume_coords_global.y));
+                NodeGlobal::log_info("Publishing resume goal");
+                NodeGlobal::goals.clear();
+                NodeGlobal::goals.push_back(resume_coords_global);
+                geometry_msgs::msg::PoseStamped::SharedPtr resume_goal_pose = this->create_goal_pose(Point(resume_coords_global.x-resume_goal_distance, resume_coords_global.y));
                 this->publish_goal(resume_goal_pose);
             } 
         }
-        geometry_msgs::msg::PoseStamped create_goal_pose(Point goal) {
-            geometry_msgs::msg::PoseStamped goal_pose;
-            goal_pose.header.stamp = this->get_clock()->now();
-            goal_pose.pose.position.x = goal.x;
-            goal_pose.pose.position.y = goal.y;
+        geometry_msgs::msg::PoseStamped::SharedPtr create_goal_pose(Point goal) {
+            auto goal_pose = std::make_shared<geometry_msgs::msg::PoseStamped>();
+            goal_pose->header.stamp = this->get_clock()->now();
+            goal_pose->pose.position.x = goal.x;
+            goal_pose->pose.position.y = goal.y;
 
             vector<double> robot_orientation_data = Subscription<std_msgs::msg::Float64,double>::subs["robot_orientation"]->get_all_data();
             double average_orientation = accumulate(robot_orientation_data.begin(), robot_orientation_data.end(), 0.0) / robot_orientation_data.size();
-            goal_pose.pose.orientation.x = 0.0;
-            goal_pose.pose.orientation.y = 0.0;
-            goal_pose.pose.orientation.z = sin(average_orientation);
-            goal_pose.pose.orientation.w = cos(average_orientation);
+            goal_pose->pose.orientation.x = 0.0;
+            goal_pose->pose.orientation.y = 0.0;
+            goal_pose->pose.orientation.z = sin(average_orientation);
+            goal_pose->pose.orientation.w = cos(average_orientation);
 
             return goal_pose;
         }
 
-        std::optional<geometry_msgs::msg::PoseStamped> get_goal_pose() {
+        std::optional<geometry_msgs::msg::PoseStamped::SharedPtr> get_goal_pose() {
             /*
             DBScan and get 2 largest groups of points
             Create list of pairs of points with distance between them
@@ -535,46 +636,60 @@ class GoalCalculator : public rclcpp::Node {
             Filter midpoints
             Pick midpoint with best heuristic
             */
-            Message<nav_msgs::msg::OccupancyGrid> enclosed_map_message = Subscription<nav_msgs::msg::OccupancyGrid, vector<vector<int>>>::subs["maps"]->get_latest_message();
-            nav_msgs::msg::OccupancyGrid map_message = enclosed_map_message.message;
+            nav_msgs::msg::OccupancyGrid::SharedPtr map_message = Subscription<nav_msgs::msg::OccupancyGrid, vector<vector<int>>>::subs["map"]->get_latest_message();
             vector<vector<int>> map_data = MessageBase::parse_message(map_message);
+            vector<Point> points;
+            for(double i = 0;i<map_data.size();i++) {
+                for(double j = 0 ; j<map_data[i].size() ; j++) {
+                    if(map_data[(int)i][(int)j] > 0) {
+                        points.push_back(Point(j, i).convert_to_global_coords(map_message));
+                    }
+                }
+            }
+            NodeGlobal::log_info("Points length:"+to_string(points.size()));
             double eps = Config::config["dbscan_eps"].as<double>();
             int minPts = Config::config["dbscan_min_samples"].as<int>();
-            vector<vector<Point>> clusters = dbscan(map_data, eps, minPts);
-            vector<PointPair> nearest_pairs = findNearestPointPairs(clusters.begin()[0], clusters.begin()[1]);
+            std::pair<vector<Point>,vector<Point>> clusters = getTopTwoClusters(points, eps, minPts);
+            std::vector<Point> largestCluster = clusters.first;
+            std::vector<Point> secondLargestCluster = clusters.second;
+            NodeGlobal::log_info("Cluster 1 length: "+to_string(largestCluster.size()));
+            NodeGlobal::log_info("Cluster 2 length: "+to_string(secondLargestCluster.size()));
+            vector<PointPair> nearest_pairs = findNearestPointPairs(largestCluster, secondLargestCluster);
+            NodeGlobal::log_info("Nearest pair length: "+to_string(nearest_pairs.size()));
             vector<CandidateGoal> candidate_goals;
             double h;
             double max_h = -1.0;
             int i;
-            CandidateGoal best_candidate_goal = CandidateGoal(Point(0.0,0.0),Point(0.0,0.0));
-            CandidateGoal candidate_goal = CandidateGoal(Point(0.0,0.0),Point(0.0,0.0));
+            CandidateGoal best_candidate_goal = CandidateGoal(Point(1.0,1.0),Point(1.0,1.0));
+            CandidateGoal candidate_goal = CandidateGoal(Point(2.0,2.0),Point(2.0,2.0));
             bool found = false;
+            NodeGlobal::log_info("Finding best candidate");
             for(std::vector<PointPair>::size_type i = 0; i != nearest_pairs.size(); i++) {
-                CandidateGoal candidate_goal = CandidateGoal(nearest_pairs[i].p1.convert_to_global_coords(map_message), nearest_pairs[i].p2.convert_to_global_coords(map_message));
+                candidate_goal = CandidateGoal(nearest_pairs[i].p1, nearest_pairs[i].p2);
                 h = candidate_goal.heuristic;
                 if(h>0) {
                     if(h > max_h) {
                         max_h = h;  
-                        CandidateGoal best_candidate_goal = CandidateGoal(candidate_goal.parent1, candidate_goal.parent2);
+                        best_candidate_goal = CandidateGoal(candidate_goal.parent1, candidate_goal.parent2);
                         found = true;
                     }
                 }
             }
             if(found == true) {
-                std::optional<geometry_msgs::msg::PoseStamped> goal_pose = create_goal_pose(best_candidate_goal);
+                std::optional<geometry_msgs::msg::PoseStamped::SharedPtr> goal_pose = create_goal_pose(best_candidate_goal);
                 return goal_pose;
             } else {
                 return std::nullopt;
             }
         }    
               
-        void publish_goal(geometry_msgs::msg::PoseStamped goal_pose) {
+        void publish_goal(geometry_msgs::msg::PoseStamped::SharedPtr goal_pose) {
             Point parsed_goal = MessageBase::parse_message(goal_pose);
-            Publishing<geometry_msgs::msg::PoseStamped>::pubs["goal_pose"]->pub->publish(goal_pose);
-            if(Config::goals.size()<=1 || parsed_goal.calculate_distance(Config::goals.end()[-1])>Config::config["goal_logger_in_between_distance"].as<double>()) {
-                Config::goals.push_back(parsed_goal);
+            Publishing<geometry_msgs::msg::PoseStamped>::pubs["goal_pose"]->pub->publish(std::move(*goal_pose));
+            if(NodeGlobal::goals.size()<=1 || parsed_goal.calculate_distance(NodeGlobal::goals.end()[-1])>Config::config["goal_logger_in_between_distance"].as<double>()) {
+                NodeGlobal::goals.push_back(parsed_goal);
             }
-            Config::write_info("Published goal");
+            NodeGlobal::log_info("Published goal ("+to_string(MessageBase::parse_message(goal_pose).x)+","+to_string(MessageBase::parse_message(goal_pose).y)+")");
         }
 };
 

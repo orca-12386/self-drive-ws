@@ -336,9 +336,6 @@ class GoalCalculator(Node):
         NodeGlobal.log_info("Node initialized")
 
 
-    def topic_callback(self, topic, msg):
-        Subscription.subs[topic].set_message(msg) 
-
     def controller(self):
         NodeGlobal.log_info("Controller is active")
         robot_coords_grid = Subscription.subs["robot_pose_grid"].get_latest_data()
