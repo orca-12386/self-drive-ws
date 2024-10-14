@@ -21,5 +21,3 @@ dbscan_min_samples: 3
 midpoint_tolerance: 0.1
 
 minimum_points: 200
-
-local_map_dim: 15
