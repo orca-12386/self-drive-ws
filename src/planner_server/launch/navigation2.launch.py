@@ -26,7 +26,9 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 # TURTLEBOT3_MODEL = os.environ['TURTLEBOT3_MODEL']
-TURTLEBOT3_MODEL = "burger"
+# TURTLEBOT3_MODEL = "burger"
+# CONFIG_FILE = "dwa.yaml"
+CONFIG_FILE = "mppi.yaml"
 
 
 def generate_launch_description():
@@ -39,7 +41,7 @@ def generate_launch_description():
             'map',
             'map.yaml'))
 
-    param_file_name = TURTLEBOT3_MODEL + '.yaml'
+    param_file_name = CONFIG_FILE
     param_dir = LaunchConfiguration(
         'params_file',
         default=os.path.join(
