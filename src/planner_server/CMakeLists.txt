@@ -1,16 +1,27 @@
-cmake_minimum_required(VERSION 3.8)
+################################################################################
+# Set minimum required version of cmake, project name and compile options
+################################################################################
+cmake_minimum_required(VERSION 3.5)
 project(planner_server)
 
-# find dependencies
-find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
 
-install(DIRECTORY
-  config
-  launch
+################################################################################
+# Find ament packages and libraries for ament and system dependencies
+################################################################################
+find_package(ament_cmake REQUIRED)
+
+################################################################################
+# Install
+################################################################################
+install(
+  DIRECTORY launch param rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
+################################################################################
+# Macro for ament package
+################################################################################
 ament_package()

@@ -11,7 +11,7 @@ def generate_launch_description():
             PathJoinSubstitution([
                 FindPackageShare('planner_server'),
                 'launch',
-                'planner.launch.py'
+                'navigation2.launch.py'
             ])
         ])
     )
