@@ -1,0 +1,6 @@
+[submodule "steve_description"]
+	path = steve_description
+	url = git@github.com:orca-12386/steve_description.git
+[submodule "self_drive_course"]
+	path = self_drive_course
+	url = git@github.com:orca-12386/self_drive_course.git

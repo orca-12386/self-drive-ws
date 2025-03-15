@@ -10,10 +10,10 @@ from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float64
 from interfaces.action import LaneChangeAction
-from interfaces.msg import LaneChangeStatus
+from std_msgs.msg import Bool as LaneChangeStatus
 
 # These are your package-specific imports.
-from goal_calculator.goal_calc2 import Message, Subscription, Publisher, NodeGlobal, Config
+from goal_calculator.ros2_wrapper import Message, Subscription, Publisher, Config, NodeGlobal
 import goal_calculator.goal_calc2 as util
 from sklearn.cluster import DBSCAN
 from scipy.spatial import cKDTree
@@ -194,6 +194,9 @@ class LaneChange(Node):
 
 def main(args=None):
     rclpy.init(args=args)
+    NodeGlobal.goals = list()
+    Message.add_parser(LaneChangeStatus, lambda message: message.data)
+
     lane_change_node = LaneChange()
 
     executor = MultiThreadedExecutor(num_threads=4)
