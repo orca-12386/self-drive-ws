@@ -39,7 +39,13 @@ private:
 class LaneMaskPublisherNode : public rclcpp::Node
 {
 public:
-    LaneMaskPublisherNode() : rclcpp::Node("lane_mask_publisher_node"), yellow_mask_upper(210,255,255), yellow_mask_lower(0,100,100) {
+    LaneMaskPublisherNode() : 
+    rclcpp::Node("lane_mask_publisher_node"), 
+    yellow_mask_upper(210,255,255), 
+    yellow_mask_lower(0,100,100),
+    white_mask_upper(190,190,190),
+    white_mask_lower(170,170,170)
+    {
         RCLCPP_INFO(this->get_logger(), "lane_mask_publisher_node started");
         // Initialise subscriptions
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
@@ -57,7 +63,7 @@ public:
         mask_pub = this->create_publisher<sensor_msgs::msg::Image>("/mask", 10);
 
         lane_change_status = false;
-        white_threshold = 200;
+        white_threshold = 150;
         target_v = 140;
 
 
@@ -137,7 +143,7 @@ private:
         log_debug(t.log());
 
         cv::cvtColor(rgb_image, hsv, cv::COLOR_RGB2HSV);    
-        cv::cvtColor(rgb_image, gray, cv::COLOR_RGB2GRAY);
+        // cv::cvtColor(rgb_image, gray, cv::COLOR_RGB2GRAY);
     
         // Timer t2 = Timer("Brightening");
         // cv::Mat brightened_hsv_image = brighten_hsv(hsv);
@@ -151,8 +157,9 @@ private:
     
         Timer t3 = Timer("Mask");
         // White mask
-        GaussianBlur(gray, mask, cv::Size(5, 5), 0, 0);
-        threshold(mask, mask, white_threshold, 255, cv::THRESH_BINARY);
+        cv::inRange(rgb_image, white_mask_lower, white_mask_upper, mask);
+        // GaussianBlur(gray, mask, cv::Size(5, 5), 0, 0);
+        // threshold(mask, mask, white_threshold, 255, cv::THRESH_BINARY);
         // Yellow mask
         if(!lane_change_status) {
             cv::inRange(hsv, yellow_mask_lower, yellow_mask_upper, yellow_mask);
@@ -160,12 +167,16 @@ private:
         }
 
         log_debug(t3.log());
-        // int kernel_size = 7;
-        // cv::Mat kernel = getStructuringElement(cv::MORPH_RECT,
-        //     cv::Size(kernel_size, kernel_size),
-        //     cv::Point(-1,-1) );
-        // cv::erode(mask, mask, kernel);
-        // cv::dilate(mask, mask, kernel);
+        int erosion_kernel_size = 2;
+        int dilation_kernel_size = 8;
+        cv::Mat erosion_kernel = getStructuringElement(cv::MORPH_RECT,
+            cv::Size(erosion_kernel_size, erosion_kernel_size),
+            cv::Point(-1,-1) );
+        cv::Mat dilation_kernel = getStructuringElement(cv::MORPH_RECT,
+            cv::Size(dilation_kernel_size, dilation_kernel_size),
+            cv::Point(-1,-1) );
+            cv::erode(mask, mask, erosion_kernel);
+        cv::dilate(mask, mask, dilation_kernel);
 
         // cv::inRange(rgb_image, cv::Scalar(0, 0, 0), cv::Scalar(150, 150, 150), mask);
 
@@ -201,6 +212,8 @@ private:
     rclcpp::TimerBase::SharedPtr timer;
 
     cv::Scalar yellow_mask_upper, yellow_mask_lower;
+    cv::Scalar white_mask_upper, white_mask_lower;
+
     int white_threshold;
     int target_v;
 

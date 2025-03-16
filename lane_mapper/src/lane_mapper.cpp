@@ -1,6 +1,6 @@
 #define HEIGHT 3000
 #define WIDTH 3000
-#define RESOLUTION 0.1
+#define RESOLUTION 0.08
 
 // #define DEBUG
 
@@ -85,7 +85,9 @@ public:
         grid_origin_y = -(HEIGHT/2.0)*RESOLUTION;
 
         z_threshold = 20;
-
+        
+        prob_mark = 0.7;
+        log_odds_mark = prob_to_log_odds(prob_mark);
         prob_hit = 0.7;
         log_odds_hit = prob_to_log_odds(prob_hit);
         prob_miss = 0.3;
@@ -111,7 +113,7 @@ public:
         instant_map_msg->info.origin.orientation.w = 1.0;
 
         full_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
-        full_map_msg->data.resize(grid_height*grid_width, 0);
+        full_map_msg->data.resize(grid_height*grid_width, -1);
         full_map_msg->header.frame_id = "map";
         full_map_msg->info.width = grid_width;
         full_map_msg->info.height = grid_height;
@@ -327,10 +329,11 @@ private:
             for(int j = min_grid_x;j<max_grid_x;j++) {
                 size_t index = (i*grid_width)+j;
                 log_odds_map[index] += log_odds_miss;
-                if(log_odds_map[index] >= log_odds_hit) {
+                if(log_odds_map[index] >= log_odds_mark) {
                     full_map_msg->data[index] = 100;
-                }
-                else {
+                } else if(log_odds_map[index] > log_odds_miss) {
+                    full_map_msg->data[index] = -1;
+                } else {
                     full_map_msg->data[index] = 0;
                 }
             }
@@ -383,8 +386,8 @@ private:
 
     rclcpp::TimerBase::SharedPtr timer;
 
-    double prob_hit, prob_miss, prob_unknown;
-    double log_odds_hit, log_odds_miss, log_odds_unknown;
+    double prob_hit, prob_miss, prob_unknown, prob_mark;
+    double log_odds_hit, log_odds_miss, log_odds_unknown, log_odds_mark;
     double log_odds_map[HEIGHT*WIDTH];
     
     int grid_height;
