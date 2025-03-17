@@ -35,7 +35,7 @@ class Message:
     parsers = [
         (PoseStamped, lambda message: (message.pose.position.x, message.pose.position.y)),
         (OccupancyGrid, lambda message: np.array(message.data).reshape((message.info.height, message.info.width))),
-        (Float64, lambda message: np.array(message.data).reshape((message.info.height, message.info.width)))
+        (Float64, lambda message: message.data)
     ]
     def __init__(self, message, datatype):
         self.message = message

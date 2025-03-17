@@ -67,7 +67,7 @@ class LaneChange(Node):
 
     def publish_status(self, status_bool):
         status_msg = LaneChangeStatus()
-        status_msg.status = status_bool
+        status_msg.data = status_bool
         Publisher.pubs["lane_change_status"].publish(status_msg)
 
     def publish_status_periodically(self):
