@@ -5,7 +5,7 @@
 // #define DEBUG
 
 #include <rclcpp/rclcpp.hpp>
-
+#include "rclcpp/qos.hpp"
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -73,9 +73,9 @@ public:
         mask_recv = false;
         camera_info_recv = false;
         odometry_recv = false;
-
+        rclcpp::QoS qos_settings = rclcpp::QoS(rclcpp::KeepLast(10)).transient_local();
+        map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/map", qos_settings);
         // Initialise publishers
-        map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/map", 10);
 
         // Initialise map
         grid_resolution = RESOLUTION;
