@@ -95,6 +95,9 @@ public:
         prob_unknown = 0.5;
         log_odds_unknown = prob_to_log_odds(prob_unknown);
 
+        log_odds_upper = 3.0;
+        log_odds_lower = -3.0;
+
         for(int i = 0;i<grid_height ;i++) {
             for(int j = 0;j<grid_width;j++) {
                 log_odds_map[(i*grid_width) + j] = log_odds_unknown;
@@ -329,6 +332,12 @@ private:
             for(int j = min_grid_x;j<max_grid_x;j++) {
                 size_t index = (i*grid_width)+j;
                 log_odds_map[index] += log_odds_miss;
+                if(log_odds_map[index] > log_odds_upper) {
+                    log_odds_map[index] = log_odds_upper;
+                }
+                if(log_odds_map[index] < log_odds_lower) {
+                    log_odds_map[index] = log_odds_lower;
+                }
                 if(log_odds_map[index] >= log_odds_mark) {
                     full_map_msg->data[index] = 100;
                 } else if(log_odds_map[index] > log_odds_miss) {
@@ -387,7 +396,7 @@ private:
     rclcpp::TimerBase::SharedPtr timer;
 
     double prob_hit, prob_miss, prob_unknown, prob_mark;
-    double log_odds_hit, log_odds_miss, log_odds_unknown, log_odds_mark;
+    double log_odds_hit, log_odds_miss, log_odds_unknown, log_odds_mark, log_odds_upper, log_odds_lower;
     double log_odds_map[HEIGHT*WIDTH];
     
     int grid_height;
