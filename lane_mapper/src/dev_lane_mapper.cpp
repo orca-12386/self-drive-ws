@@ -2,10 +2,10 @@
 #define WIDTH 3000
 #define RESOLUTION 0.08
 
-// #define DEBUG
+#define DEBUG
 
 #include <rclcpp/rclcpp.hpp>
-#include "rclcpp/qos.hpp"
+
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -73,9 +73,9 @@ public:
         mask_recv = false;
         camera_info_recv = false;
         odometry_recv = false;
-        rclcpp::QoS qos_settings = rclcpp::QoS(rclcpp::KeepLast(10)).transient_local();
-        map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/map", qos_settings);
+
         // Initialise publishers
+        map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/map", 10);
 
         // Initialise map
         grid_resolution = RESOLUTION;
@@ -163,28 +163,34 @@ private:
         RCLCPP_INFO(this->get_logger(), str.c_str());
     }
 
+    void log_matrix(cv::Mat& mat) {
+        float a = mat.at<float>(0, mat.cols-1);
+        float b = mat.at<float>(1, mat.cols-1);
+        log_debug(std::string("Matrix: ")+std::to_string(a)+std::string(", ")+std::to_string(b));
+    }    
+
     // Points
 
     typedef struct Point {
-        double x;
-        double y;
-        double z;
-        double local_grid_x;
-        double local_grid_y;
+        float x;
+        float y;
+        float z;
+        float local_grid_x;
+        float local_grid_y;
         int global_grid_x;
         int global_grid_y;
     } Point;
 
-    Point convert_depth_to_point(const cv::Point& location, const double& depth, const sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
-        double fx = camera_info->k[0]; 
-        double fy = camera_info->k[4];
-        double cx = camera_info->k[2];
-        double cy = camera_info->k[5];
-        double u = location.x;
-        double v = location.y;
-        double z = depth;
-        double x = ((u-cx)*z)/fx;
-        double y = ((v-cy)*z)/fy;
+    Point convert_depth_to_point(const cv::Point& location, const float& depth, const sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
+        float fx = camera_info->k[0]; 
+        float fy = camera_info->k[4];
+        float cx = camera_info->k[2];
+        float cy = camera_info->k[5];
+        float u = location.x;
+        float v = location.y;
+        float z = depth;
+        float x = ((u-cx)*z)/fx;
+        float y = ((v-cy)*z)/fy;
         Point p = Point();
         p.x = x;
         p.y = y;
@@ -193,27 +199,61 @@ private:
         return p;
     }
 
-    void convert_to_grid_coords(Point& p, double refx, double refy) {
+    cv::Mat mask_to_grid(cv::Mat input_matrix, cv::Mat depth_diagonal_matrix, const sensor_msgs::msg::CameraInfo::SharedPtr camera_info, double yaw, float shifted_origin_x, float shifted_origin_y) {
+        float fx = camera_info->k[0]; 
+        float fy = camera_info->k[4];
+        float cx = camera_info->k[2];
+        float cy = camera_info->k[5];
+        float kinv[6] = {1/fx, -cx/fx, 0, 1};
+        cv::Mat camera_info_mat(2, 2, CV_32FC1, kinv);
+        float rot[6] = {static_cast<float>(-cos(yaw)), static_cast<float>(sin(yaw)), static_cast<float>(sin(yaw)), static_cast<float>(cos(yaw))};
+        cv::Mat rotation_mat(2,2,CV_32FC1,rot);
+
+        log_matrix(input_matrix);
+        cv::Mat camera_transformed = camera_info_mat*input_matrix;
+        log_matrix(camera_transformed);
+        cv::Mat resolution_transformed = camera_transformed/grid_resolution;
+        log_matrix(resolution_transformed);
+        cv::Mat rotate_transformed = rotation_mat*resolution_transformed;
+        log(std::string("rotate"));
+        log_matrix(rotate_transformed);
+
+        std::vector<float> row(rotate_transformed.cols, 0);
+        row[rotate_transformed.cols-1] = 1;
+        cv::Mat row_mat(1, rotate_transformed.cols, CV_32FC1, row.data());
+        rotate_transformed.push_back(row_mat);
+
+        float shift[9] = {1,0,shifted_origin_x, 0,1,shifted_origin_y, 0,0,1};
+        cv::Mat shift_mat(3,3,CV_32FC1,shift);
+
+        cv::Mat out = shift_mat*rotate_transformed;
+        log(std::string("shift"));
+        log_matrix(out);
+
+        return out;
+    }
+
+    void convert_to_grid_coords(Point& p, float refx, float refy) {
         p.local_grid_x = (p.x - refx)/grid_resolution;
         p.local_grid_y = (p.z - refy)/grid_resolution; 
     }
 
     void rotate_local_grid(Point& p, double yaw) {
-        double original_y = p.local_grid_y;
+        float original_y = p.local_grid_y;
         p.local_grid_y = (p.local_grid_y*sin(yaw)) - (p.local_grid_x*cos(yaw)); 
         p.local_grid_x = (p.local_grid_x*sin(yaw)) + (original_y*cos(yaw));
     }
 
-    void get_global_grid_coords(Point& p, double shifted_origin_x, double shifted_origin_y) {
-        p.global_grid_x = static_cast<int>(std::round(p.local_grid_x + shifted_origin_x));
-        p.global_grid_y = static_cast<int>(std::round(p.local_grid_y + shifted_origin_y));
+    void get_global_grid_coords(Point& p, float shifted_origin_x, float shifted_origin_y) {
+        p.global_grid_x = std::lround(p.local_grid_x + shifted_origin_x);
+        p.global_grid_y = std::lround(p.local_grid_y + shifted_origin_y);
     }
 
-    double log_odds_to_prob(const double& log_odds) {
+    float log_odds_to_prob(const float& log_odds) {
         return 1-(1/(1+exp(log_odds)));
     }
 
-    double prob_to_log_odds(const double& prob) {
+    float prob_to_log_odds(const float& prob) {
         return std::log(prob/(1-prob));
     }
 
@@ -234,42 +274,55 @@ private:
             return;
         }
 
-        log_debug(t.log());
+        // log_debug(t.log());
 
         Timer t3 = Timer("Locations");
         // Mask depth image and convert to point format
         locations.clear();
         cv::findNonZero(mask_image, locations); // Get all nonzero pixel locations
-        log_debug(std::string("Number of non-zero pixel locations: ")+std::to_string(static_cast<int>(locations.size())));
+        // log_debug(std::string("Number of non-zero pixel locations: ")+std::to_string(static_cast<int>(locations.size())));
        
-        log_debug(t3.log());
+        if(locations.size() == 0) {
+            return;
+        }
+        // log_debug(t3.log());
 
         Timer t4 = Timer("Point vector");
 
-        points.clear();
+        std::vector<float> depth_diagonal_vec;
+        std::vector<float> input_vec;
+        float depth_value;
         for (const auto& pt : locations) {
-            double depth = static_cast<double>(depth_image.at<float>(pt.y, pt.x)); // Access color pixel
-            Point p = convert_depth_to_point(pt, depth, camera_info);
-            if(p.z<z_threshold) {
-                points.push_back(p);
+            depth_value = depth_image.at<float>(pt.y, pt.x); // Access color pixel
+            if(depth_value<z_threshold) {
+                input_vec.push_back(static_cast<float>(pt.x));
+                depth_diagonal_vec.push_back(depth_value);
             }
         }
-        log_debug(std::string("Number of points: ")+std::to_string(static_cast<int>(points.size())));
-
-        log_debug(t4.log());
+        if(input_vec.size() == 0) {
+            return;
+        }
+        input_vec.insert(input_vec.end(), input_vec.size(), 1);
+        cv::Mat input_mat(2, input_vec.size(), CV_32FC1, input_vec.data());
+        float* depth_mat_arr = new float[input_vec.size()*input_vec.size()];
+        std::fill(depth_mat_arr, depth_mat_arr+(input_vec.size()*input_vec.size())-1, 0);
+        for(size_t i = 0;i<depth_diagonal_vec.size();i++) {
+            depth_mat_arr[(i*depth_diagonal_vec.size())+i] = depth_diagonal_vec[i];
+        }
+        cv::Mat depth_diagonal_mat(depth_diagonal_vec.size(), depth_diagonal_vec.size(), CV_32FC1, depth_mat_arr);
+        
+        // log_debug(t4.log());
 
         Timer t5 = Timer("Odometry");
 
-        Point odom;
+        Point odom = Point();
         odom.x = odometry_msg->pose.pose.position.x;
         odom.y = odometry_msg->pose.pose.position.z;
         odom.z = odometry_msg->pose.pose.position.y;
         convert_to_grid_coords(odom, grid_origin_x, grid_origin_y);
         get_global_grid_coords(odom, 0, 0);
-        // instant_map_msg->data[odom.global_grid_x+(grid_width*odom.global_grid_y)] = 100;
-
-        //log_debug("Converted odom to grid coords");
-
+        
+        
         tf2::Quaternion q(
             odometry_msg->pose.pose.orientation.x,
             odometry_msg->pose.pose.orientation.y,
@@ -279,7 +332,9 @@ private:
         tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
 
         //log_debug("Calculated yaw");
-        log_debug(t5.log());
+        cv::Mat output_mat = mask_to_grid(input_mat, depth_diagonal_mat, camera_info, yaw, odom.global_grid_x, odom.global_grid_y);
+
+        // log_debug(t5.log());
 
         Timer t6 = Timer("grid conversion");
         
@@ -288,42 +343,50 @@ private:
         //log_debug("Created map message");
         // log_debug("x");
 
+        
+
         int min_grid_x = grid_width, max_grid_x = 0;
         int min_grid_y = grid_height, max_grid_y = 0;
-        for (auto it = begin (points); it != end (points); ++it) {
+        Point it = Point();
+        for (size_t i = 0;i < output_mat.cols ; i++) {
+            // log_debug(std::to_string(output_mat.at<float>(0, i))+std::string(", ")+std::to_string(output_mat.at<float>(1, i)));
+            it.global_grid_x = std::lround(output_mat.at<float>(0, i));
+            it.global_grid_y = std::lround(output_mat.at<float>(1, i));
+            // log_debug(std::to_string(it.global_grid_x)+std::string(", ")+std::to_string(it.global_grid_y));
             // log_debug("y");
-            //log_debug(std::string("iterator:")+std::to_string(it->x)+std::string(",")+std::to_string(it->y));
-            convert_to_grid_coords(*it, 0, 0);
+            //log_debug(std::string("iterator:")+std::to_string(it.x)+std::string(",")+std::to_string(it.y));
+            // convert_to_grid_coords(*it, 0, 0);
             // log_debug("a");
-            rotate_local_grid(*it, yaw);
+            // rotate_local_grid(*it, yaw);
             // log_debug("b");
-            get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
+            // get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
             // log_debug("c");
-            // log_debug(std::to_string(it->global_grid_x) + std::string(",") + std::to_string(it->global_grid_y));
-            // log_debug(std::to_string((it->global_grid_y*grid_width)+it->global_grid_x));
-            if(it->global_grid_y < grid_height && it->global_grid_y >= 0 && it->global_grid_x >= 0 && it->global_grid_x < grid_width) {
-                if(it->global_grid_x < min_grid_x) {
-                    min_grid_x = it->global_grid_x;
+            // log_debug(std::to_string(it.global_grid_x) + std::string(",") + std::to_string(it.global_grid_y));
+            // log_debug(std::to_string((it.global_grid_y*grid_width)+it.global_grid_x));
+            if(it.global_grid_y < grid_height && it.global_grid_y >= 0 && it.global_grid_x >= 0 && it.global_grid_x < grid_width) {
+                if(it.global_grid_x < min_grid_x) {
+                    min_grid_x = it.global_grid_x;
                 }
-                if(it->global_grid_x > max_grid_x) {
-                    max_grid_x = it->global_grid_x;
+                if(it.global_grid_x > max_grid_x) {
+                    max_grid_x = it.global_grid_x;
                 }
-                if(it->global_grid_y < min_grid_y) {
-                    min_grid_y = it->global_grid_y;
+                if(it.global_grid_y < min_grid_y) {
+                    min_grid_y = it.global_grid_y;
                 }
-                if(it->global_grid_y > max_grid_y) {
-                    max_grid_y = it->global_grid_y;
+                if(it.global_grid_y > max_grid_y) {
+                    max_grid_y = it.global_grid_y;
                 }
-                size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
+                size_t index = (it.global_grid_y*grid_width)+it.global_grid_x;
                 instant_map_msg->data[index] = 100;
                 log_odds_map[index] += log_odds_hit-log_odds_miss;
             } else {
-                log("Assignment exceeds map dimensions");
+                // log("Assignment exceeds map dimensions: "+std::to_string(it.global_grid_x)+std::string(", ")+std::to_string(it.global_grid_y));
+                // log_debug(std::to_string(output_mat.rows)+std::string(", ")+std::to_string(output_mat.cols));
             }
             // log_debug("d");
         }
 
-        log_debug(t6.log());
+        // log_debug(t6.log());
 
         for(int i = min_grid_y; i<max_grid_y ;i++) {
             for(int j = min_grid_x;j<max_grid_x;j++) {
@@ -347,7 +410,10 @@ private:
         //publish map
         map_pub->publish(*full_map_msg);
 
-        log_debug(t7.log());
+        // log_debug(t7.log());
+
+        delete depth_mat_arr;
+
     }
 
     void timer_callback() {
@@ -386,15 +452,15 @@ private:
 
     rclcpp::TimerBase::SharedPtr timer;
 
-    double prob_hit, prob_miss, prob_unknown, prob_mark;
-    double log_odds_hit, log_odds_miss, log_odds_unknown, log_odds_mark;
-    double log_odds_map[HEIGHT*WIDTH];
+    float prob_hit, prob_miss, prob_unknown, prob_mark;
+    float log_odds_hit, log_odds_miss, log_odds_unknown, log_odds_mark;
+    float log_odds_map[HEIGHT*WIDTH];
     
     int grid_height;
     int grid_width;
-    double grid_resolution;
-    double grid_origin_x;
-    double grid_origin_y;
+    float grid_resolution;
+    float grid_origin_x;
+    float grid_origin_y;
 
     int y_threshold, z_threshold;
 

@@ -48,6 +48,10 @@ public:
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
             "/zed_node/stereocamera/image_raw", 10, std::bind(&LaneMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
     
+        depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
+            "/zed_node/stereocamera/depth/image_raw", 10, std::bind(&LaneMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
+    
+
         lane_change_status_sub = create_subscription<std_msgs::msg::Bool>(
             "/lane_change_status", 10, 
             std::bind(&LaneMaskPublisherNode::laneChangeStatusCallback, this, std::placeholders::_1));
@@ -69,16 +73,28 @@ private:
         rgb_recv = true;
     }
 
+    void depthImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
+        this->depth_image_msg = msg;
+        depth_recv = true;
+    }
+
     void laneChangeStatusCallback(const std_msgs::msg::Bool::SharedPtr msg) {
         this->lane_change_status = msg->data;
     }
 
-    void publish_mask(sensor_msgs::msg::Image::SharedPtr rgb) {    
+    void log(std::string str) {
+        RCLCPP_INFO(this->get_logger(), str.c_str());
+    }
+
+    void publish_mask(sensor_msgs::msg::Image::SharedPtr rgb, sensor_msgs::msg::Image::SharedPtr depth) {    
         Timer t = Timer("sensor msg to cv mat");
         rgb_image_ptr = cv_bridge::toCvCopy(rgb, rgb->encoding);
         rgb_image = rgb_image_ptr->image;
 
-        if (rgb_image.empty()) {
+        depth_image_ptr = cv_bridge::toCvCopy(depth, depth->encoding);
+        depth_image = depth_image_ptr->image;
+
+        if (rgb_image.empty() || depth_image.empty()) {
             return;
         } 
 
@@ -114,7 +130,7 @@ private:
                 float x0 = line_params[2], y0 = line_params[3];
 
                 int y_max = yellow_mask.rows;
-                int y_min = static_cast<int>(y_max * (1.5 / 5.0));
+                int y_min = 0;
 
                 int x_min = static_cast<int>(x0 + (y_min - y0) * (vx / vy));
                 int x_max = static_cast<int>(x0 + (y_max - y0) * (vx / vy));
@@ -127,30 +143,56 @@ private:
             cv::bitwise_or(yellow_mask, mask, mask);
         }
 
+        float value;
+        float minvalue;
+        int horizon_rows = 0;
+        for(int i = 0;i<depth_image.rows;i++) {
+            minvalue = depth_image.at<float>(i, 0);
+            for(int j = 1;j<depth_image.cols;j++) {
+                value = depth_image.at<float>(i, j);
+                if(value < minvalue) {
+                    minvalue = value;
+                }
+            }
+            if(minvalue < 20) {
+                break;
+            } else {
+                horizon_rows = i;
+            }
+        }
+        // log(std::to_string(horizon_rows));
+        
+        horizon_roi = cv::Rect(0, 0, depth_image.cols, horizon_rows);    // x, y, width, height
+        horizon_mat = mask(horizon_roi);
+        horizon_mat.setTo(cv::Scalar::all(0));
+        
         mask_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask).toImageMsg();
         mask_pub->publish(*mask_msg);
     }
 
     void timer_callback() {
-        if(rgb_recv) {
-            publish_mask(rgb_image_msg);
+        if(rgb_recv && depth_recv) {
+            publish_mask(rgb_image_msg, depth_image_msg);
         }
     }
 
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_sub;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_sub, depth_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lane_change_status_sub;
     bool rgb_recv;
+    bool depth_recv;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_pub;
-    sensor_msgs::msg::Image::SharedPtr rgb_image_msg;
+    sensor_msgs::msg::Image::SharedPtr rgb_image_msg, depth_image_msg;
     bool lane_change_status;
     rclcpp::TimerBase::SharedPtr timer;
     cv::Scalar yellow_mask_upper, yellow_mask_lower;
     cv::Scalar white_mask_upper, white_mask_lower;
     int white_threshold;
     int target_v;
-    cv_bridge::CvImagePtr rgb_image_ptr;
-    cv::Mat rgb_image;
+    cv_bridge::CvImagePtr rgb_image_ptr, depth_image_ptr;
+    cv::Mat rgb_image, depth_image;
     cv::Mat hsv, mask, yellow_mask;
+    cv::Mat horizon_mat;
+    cv::Rect horizon_roi;
     sensor_msgs::msg::Image::SharedPtr mask_msg;
 };
 
