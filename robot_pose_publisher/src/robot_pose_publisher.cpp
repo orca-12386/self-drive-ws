@@ -12,7 +12,7 @@ public:
     RobotPosePublisher() : Node("robot_pose_publisher") {
         // Initialize subscribers
         map_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "/map", 10, 
+            "/map/white", 10, 
             std::bind(&RobotPosePublisher::mapCallback, this, std::placeholders::_1));
         
         odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
@@ -51,7 +51,7 @@ private:
 
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr odom_msg) {
         if (!has_map_) {
-            RCLCPP_WARN(get_logger(), "No map received yet");
+            // RCLCPP_WARN(get_logger(), "No map received yet");
             return;
         }
 

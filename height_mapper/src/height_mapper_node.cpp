@@ -5,7 +5,7 @@
 // #define DEBUG
 
 #include <rclcpp/rclcpp.hpp>
-
+#include "rclcpp/qos.hpp"
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -48,30 +48,24 @@ private:
 };
 
 
-class LaneMapperNode : public rclcpp::Node
+class HeightMapperNode : public rclcpp::Node
 {
 public:
-    LaneMapperNode() : rclcpp::Node("lane_mapper_node") {
-        RCLCPP_INFO(this->get_logger(), "lane_mapper_node started");
-
-        this->declare_parameter("map_pub_topic", rclcpp::PARAMETER_STRING);
-        this->declare_parameter("mask_sub_topic", rclcpp::PARAMETER_STRING);
-        std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
-        std::string mask_sub_topic = this->get_parameter("mask_sub_topic").as_string();
-
+    HeightMapperNode() : rclcpp::Node("height_mapper_node") {
+        RCLCPP_INFO(this->get_logger(), "height_mapper_node started");
         // Initialise subscriptions
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/depth/image_raw", 10, std::bind(&LaneMapperNode::depthImageCallback, this, std::placeholders::_1));
+            "/zed_node/stereocamera/depth/image_raw", 10, std::bind(&HeightMapperNode::depthImageCallback, this, std::placeholders::_1));
 
         mask_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            mask_sub_topic, 10, std::bind(&LaneMapperNode::maskImageCallback, this, std::placeholders::_1));
+            "/height_mask", 10, std::bind(&HeightMapperNode::maskImageCallback, this, std::placeholders::_1));
 
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/zed_node/stereocamera/camera_info", 10, std::bind(&LaneMapperNode::cameraInfoCallback, this, std::placeholders::_1));
+            "/zed_node/stereocamera/camera_info", 10, std::bind(&HeightMapperNode::cameraInfoCallback, this, std::placeholders::_1));
 
         odometry_sub = create_subscription<nav_msgs::msg::Odometry>(
             "/odom", 10, 
-            std::bind(&LaneMapperNode::odomCallback, this, std::placeholders::_1));
+            std::bind(&HeightMapperNode::odomCallback, this, std::placeholders::_1));
 
 
         // Initialise subscription flags
@@ -81,7 +75,8 @@ public:
         odometry_recv = false;
 
         // Initialise publishers
-        map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>(map_pub_topic, 10);
+        rclcpp::QoS qos_settings = rclcpp::QoS(rclcpp::KeepLast(20)).transient_local();
+        map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/height_map", qos_settings);
 
         // Initialise map
         grid_resolution = RESOLUTION;
@@ -101,36 +96,28 @@ public:
         prob_unknown = 0.5;
         log_odds_unknown = prob_to_log_odds(prob_unknown);
 
+        log_odds_upper = 2.0;
+        log_odds_lower = -1.0;
+
         for(int i = 0;i<grid_height ;i++) {
             for(int j = 0;j<grid_width;j++) {
                 log_odds_map[(i*grid_width) + j] = log_odds_unknown;
             }
         }
 
-        instant_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
-        instant_map_msg->data.resize(grid_height*grid_width, 0);
-        instant_map_msg->header.frame_id = "map";
-        instant_map_msg->info.width = grid_width;
-        instant_map_msg->info.height = grid_height;
-        instant_map_msg->info.resolution = grid_resolution;
-        instant_map_msg->info.origin.position.x = grid_origin_x;
-        instant_map_msg->info.origin.position.y = grid_origin_y;
-        instant_map_msg->info.origin.position.z = 0.0;
-        instant_map_msg->info.origin.orientation.w = 1.0;
-
-        full_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
-        full_map_msg->data.resize(grid_height*grid_width, -1);
-        full_map_msg->header.frame_id = "map";
-        full_map_msg->info.width = grid_width;
-        full_map_msg->info.height = grid_height;
-        full_map_msg->info.resolution = grid_resolution;
-        full_map_msg->info.origin.position.x = grid_origin_x;
-        full_map_msg->info.origin.position.y = grid_origin_y;
-        full_map_msg->info.origin.position.z = 0.0;
-        full_map_msg->info.origin.orientation.w = 1.0;
+        height_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
+        height_map_msg->data.resize(grid_height*grid_width, 0);
+        height_map_msg->header.frame_id = "map";
+        height_map_msg->info.width = grid_width;
+        height_map_msg->info.height = grid_height;
+        height_map_msg->info.resolution = grid_resolution;
+        height_map_msg->info.origin.position.x = grid_origin_x;
+        height_map_msg->info.origin.position.y = grid_origin_y;
+        height_map_msg->info.origin.position.z = 0.0;
+        height_map_msg->info.origin.orientation.w = 1.0;
 
         timer = this->create_wall_timer(
-            std::chrono::milliseconds(50), std::bind(&LaneMapperNode::timer_callback, this));
+            std::chrono::milliseconds(50), std::bind(&HeightMapperNode::timer_callback, this));
         
     };
 
@@ -195,7 +182,6 @@ private:
         p.x = x;
         p.y = y;
         p.z = z;
-        //log_debug(std::string("convert_depth_to_point: ")+std::to_string(p.x)+std::string(",")+std::to_string(p.z));
         return p;
     }
 
@@ -247,7 +233,7 @@ private:
         locations.clear();
         cv::findNonZero(mask_image, locations); // Get all nonzero pixel locations
         log_debug(std::string("Number of non-zero pixel locations: ")+std::to_string(static_cast<int>(locations.size())));
-        
+       
         log_debug(t3.log());
 
         Timer t4 = Timer("Point vector");
@@ -287,26 +273,16 @@ private:
         //log_debug("Calculated yaw");
         log_debug(t5.log());
 
+        std::fill(height_map_msg->data.begin(), height_map_msg->data.end(), 0);
+
         Timer t6 = Timer("grid conversion");
         
-        std::fill(instant_map_msg->data.begin(), instant_map_msg->data.end(), 0);
-
-        //log_debug("Created map message");
-        // log_debug("x");
-
         int min_grid_x = grid_width, max_grid_x = 0;
         int min_grid_y = grid_height, max_grid_y = 0;
-        for (auto it = begin (points); it != end (points); ++it) {
-            // log_debug("y");
-            //log_debug(std::string("iterator:")+std::to_string(it->x)+std::string(",")+std::to_string(it->y));
+        for (auto it = std::begin (points); it != std::end (points); ++it) {
             convert_to_grid_coords(*it, 0, 0);
-            // log_debug("a");
             rotate_local_grid(*it, yaw);
-            // log_debug("b");
             get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
-            // log_debug("c");
-            // log_debug(std::to_string(it->global_grid_x) + std::string(",") + std::to_string(it->global_grid_y));
-            // log_debug(std::to_string((it->global_grid_y*grid_width)+it->global_grid_x));
             if(it->global_grid_y < grid_height && it->global_grid_y >= 0 && it->global_grid_x >= 0 && it->global_grid_x < grid_width) {
                 if(it->global_grid_x < min_grid_x) {
                     min_grid_x = it->global_grid_x;
@@ -321,7 +297,10 @@ private:
                     max_grid_y = it->global_grid_y;
                 }
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
-                instant_map_msg->data[index] = 100;
+                int height = static_cast<int>(it->y*10);
+                if(height > height_map_msg->data[index]) {
+                    height_map_msg->data[index] = height;
+                }
                 log_odds_map[index] += log_odds_hit-log_odds_miss;
             } else {
                 log("Assignment exceeds map dimensions");
@@ -329,31 +308,25 @@ private:
             // log_debug("d");
         }
 
-        log_debug(t6.log());
-
         for(int i = min_grid_y; i<max_grid_y ;i++) {
             for(int j = min_grid_x;j<max_grid_x;j++) {
                 size_t index = (i*grid_width)+j;
                 log_odds_map[index] += log_odds_miss;
-                if(log_odds_map[index] >= log_odds_mark) {
-                    full_map_msg->data[index] = 100;
-                } else if(log_odds_map[index] > log_odds_miss) {
-                    full_map_msg->data[index] = -1;
-                } else {
-                    full_map_msg->data[index] = 0;
+                if(log_odds_map[index] > log_odds_upper) {
+                    log_odds_map[index] = log_odds_upper;
+                }
+                if(log_odds_map[index] < log_odds_lower) {
+                    log_odds_map[index] = log_odds_lower;
+                }
+                if(log_odds_map[index] < log_odds_mark) {
+                    height_map_msg->data[index] = 0;
                 }
             }
         }
 
-        Timer t7 = Timer("create and publish");
+        height_map_msg->header.stamp = this->now();
+        map_pub->publish(*height_map_msg);
 
-        full_map_msg->header.stamp = this->now();
-        //log_debug("Created map msg");
-
-        //publish map
-        map_pub->publish(*full_map_msg);
-
-        log_debug(t7.log());
     }
 
     void timer_callback() {
@@ -393,7 +366,7 @@ private:
     rclcpp::TimerBase::SharedPtr timer;
 
     double prob_hit, prob_miss, prob_unknown, prob_mark;
-    double log_odds_hit, log_odds_miss, log_odds_unknown, log_odds_mark;
+    double log_odds_hit, log_odds_miss, log_odds_unknown, log_odds_mark, log_odds_upper, log_odds_lower;
     double log_odds_map[HEIGHT*WIDTH];
     
     int grid_height;
@@ -408,14 +381,13 @@ private:
     cv::Mat depth_image, mask_image;
     std::vector<cv::Point> locations;
     std::vector<Point> points;
-    std::shared_ptr<nav_msgs::msg::OccupancyGrid> instant_map_msg;
-    std::shared_ptr<nav_msgs::msg::OccupancyGrid> full_map_msg;
+    std::shared_ptr<nav_msgs::msg::OccupancyGrid> height_map_msg;
 };
 
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<LaneMapperNode>();
+    auto node = std::make_shared<HeightMapperNode>();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

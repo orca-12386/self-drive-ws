@@ -16,7 +16,7 @@ def generate_launch_description():
     world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_lights.world')
     robot_file = os.path.join(robo_desc_dir,'launch','robot_gazebo.launch.py')
 
-    return LaunchDescription([
+    launch_world_robot = [
         SetEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
             os.path.join(package_share_dir, 'models') + ':' + os.environ.get('GAZEBO_MODEL_PATH', '')
@@ -32,22 +32,82 @@ def generate_launch_description():
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(robot_file)
-        ),
-        # Node(
-        #     package='local_costmap',
-        #     executable='local_costmap_node',
-        #     name='local_costmap_node'
-        # ),
-        Node(
-            package='lane_mapper',
-            executable='lane_mapper_node',
-            name='lane_mapper_node'
-        ),
+        )
+    ]
+
+    launch_lane_masker = [
         Node(
             package='lane_mapper',
             executable='lane_mask_publisher_node',
             name='lane_mask_publisher_node'
+        )
+    ]
+
+    launch_lane_mapper = [
+        Node(
+            package='lane_mapper',
+            executable='lane_mapper_node',
+            name='lane_mapper_node',
+            parameters=[{
+                'mask_sub_topic': '/mask/white',
+                'map_pub_topic': '/map/white'
+            }]
         ),
+        Node(
+            package='lane_mapper',
+            executable='lane_mapper_node',
+            name='lane_mapper_node',
+            parameters=[{
+                'mask_sub_topic': '/mask/yellow',
+                'map_pub_topic': '/map/yellow'
+            }]
+        )
+    ]
+
+    launch_map_ensemble = [
+        Node(
+            package='multimap_assembler',
+            executable='multimap_assembler_node',
+            name='multimap_assembler_node',
+            parameters=[{
+                'map1_sub_topic': '/map/white/local',
+                'map2_sub_topic': '/map/yellow/local',
+                'map_pub_topic': '/map/local',
+                'assemble_mode': 1
+        }]
+        )   
+    ]
+
+    launch_local_map = [
+        Node(
+            package='local_costmap',
+            executable='local_costmap_node',
+            name='local_costmap_node',
+            parameters=[{
+                'map_sub_topic': '/map/yellow'
+            }]
+        ),
+        Node(
+            package='local_costmap',
+            executable='local_costmap_node',
+            name='local_costmap_node',
+            parameters=[{
+                'map_sub_topic': '/map/white'
+            }]
+        )
+    ]
+
+    launch_transforms =  [
+        # Node(
+        #     package='height_mapper',
+        #     executable='height_mask_publisher_node',
+        #     name='height_mask_publisher_node'
+        # ),
+        # Node(
+        #     package='height_mapper',
+        #     executable='height_mapper_node',
+        #     name='height_mapper_node'
+        # ),
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -69,5 +129,16 @@ def generate_launch_description():
             package='tf_odom_link_base',
             executable='tf_odom',
             name='tf_odom'
-        ),
-    ])
+        )
+    ]
+    
+    launch_description = list()
+
+    launch_description.extend(launch_world_robot)
+    launch_description.extend(launch_lane_masker)
+    launch_description.extend(launch_lane_mapper)
+    launch_description.extend(launch_local_map)
+    launch_description.extend(launch_map_ensemble)
+    launch_description.extend(launch_transforms)
+
+    return LaunchDescription(launch_description)
