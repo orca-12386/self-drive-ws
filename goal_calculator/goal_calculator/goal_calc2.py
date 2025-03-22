@@ -14,7 +14,7 @@ from scipy.spatial import cKDTree
 import statistics
 import time
 from collections import defaultdict
-from std_msgs.msg import Bool as LaneChangeStatus
+from std_msgs.msg import Bool as LaneKeepDisable
 from goal_calculator.ros2_wrapper import Subscription, Message, Publisher, Config, NodeGlobal
 
 
@@ -191,7 +191,7 @@ class GoalCalculator(Node):
             "robot_pose_global": ["robot_pose_global", PoseStamped],
             "robot_pose_grid": ["robot_pose_grid", PoseStamped],
             "robot_orientation": ["robot_orientation", Float64, 10],
-            "lane_change_status": ["lane_change_status", LaneChangeStatus]
+            "lane_keep_disable": ["lane_keep_disable", LaneKeepDisable]
         }
 
         Subscription.create_subscriptions(subscription_info)
@@ -215,8 +215,8 @@ class GoalCalculator(Node):
 
 
     def controller(self):
-        lane_change_status = Subscription.subs["lane_change_status"].get_latest_data()
-        if lane_change_status == False:
+        lane_keep_disable = Subscription.subs["lane_keep_disable"].get_latest_data()
+        if lane_keep_disable == False:
             NodeGlobal.log_info("Controller is active")
             robot_coords_grid = Subscription.subs["robot_pose_grid"].get_latest_data()
             robot_coords_global = Subscription.subs["robot_pose_global"].get_latest_data()
@@ -361,7 +361,7 @@ class GoalCalculator(Node):
 def main(args = None):
     rclpy.init(args = args)
     NodeGlobal.goals = list()
-    Message.add_parser(LaneChangeStatus, lambda message: message.data)
+    Message.add_parser(LaneKeepDisable, lambda message: message.data)
     goal_calculator = GoalCalculator()
     rclpy.spin(goal_calculator)
     goal_calculator.destroy_node()

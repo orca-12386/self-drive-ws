@@ -10,7 +10,7 @@ from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float64
 from interfaces.action import LaneChangeAction
-from std_msgs.msg import Bool as LaneChangeStatus
+from std_msgs.msg import Bool as LaneKeepDisable
 
 # These are your package-specific imports.
 from goal_calculator.ros2_wrapper import Message, Subscription, Publisher, Config, NodeGlobal
@@ -34,8 +34,7 @@ class LaneChange(Node):
     def __init__(self):
         super().__init__("lane_change_node")
         NodeGlobal.obj = self
-        Config.read_config("/home/tanmay/self-drive-function/src/goal_calculator/config/config.yaml")
-
+    
         self._action_server = ActionServer(
             self,
             LaneChangeAction,
@@ -56,7 +55,7 @@ class LaneChange(Node):
 
         publisher_info = {
             "goal_pose": ["goal_pose", PoseStamped],
-            "lane_change_status": ["lane_change_status", LaneChangeStatus]
+            "lane_keep_disable": ["lane_keep_disable", LaneKeepDisable]
         }
         Publisher.create_publishers(publisher_info)
 
@@ -66,9 +65,9 @@ class LaneChange(Node):
         self.timer = self.create_timer(0.1, self.publish_status_periodically)
 
     def publish_status(self, status_bool):
-        status_msg = LaneChangeStatus()
+        status_msg = LaneKeepDisable()
         status_msg.data = status_bool
-        Publisher.pubs["lane_change_status"].publish(status_msg)
+        Publisher.pubs["lane_keep_disable"].publish(status_msg)
 
     def publish_status_periodically(self):
         self.publish_status(self.lane_change_active)
@@ -195,7 +194,7 @@ class LaneChange(Node):
 def main(args=None):
     rclpy.init(args=args)
     NodeGlobal.goals = list()
-    Message.add_parser(LaneChangeStatus, lambda message: message.data)
+    Message.add_parser(LaneKeepDisable, lambda message: message.data)
 
     lane_change_node = LaneChange()
 

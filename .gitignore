@@ -3,3 +3,5 @@ install/
 log/
 .vscode/
 old_packages/
+__pycache__/
+*.pyc

@@ -13,6 +13,9 @@ class LocalCostmapPublisher : public rclcpp::Node
 public:
     LocalCostmapPublisher() : Node("local_costmap_publisher")
     {
+        this->declare_parameter("map_sub_topic", rclcpp::PARAMETER_STRING);
+        std::string map_sub_topic = this->get_parameter("map_sub_topic").as_string();
+
         // Initialize tf2 buffer and listener
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -22,14 +25,14 @@ public:
 
         // Subscribe to global map and robot pose
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "/map", 10, std::bind(&LocalCostmapPublisher::mapCallback, this, std::placeholders::_1));
+            map_sub_topic, 10, std::bind(&LocalCostmapPublisher::mapCallback, this, std::placeholders::_1));
         
         pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
             "/robot_pose_global", 10, std::bind(&LocalCostmapPublisher::poseCallback, this, std::placeholders::_1));
 
         // Publisher for local costmap
         costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
-            "/local_map", 10);
+            map_sub_topic+std::string("/local"), 10);
 
         RCLCPP_INFO(this->get_logger(), "Local Costmap Publisher initialized");
     }
