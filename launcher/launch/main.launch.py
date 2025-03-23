@@ -72,7 +72,7 @@ def generate_launch_description():
             parameters=[{
                 'map1_sub_topic': '/map/white/local',
                 'map2_sub_topic': '/map/yellow/local',
-                'map_pub_topic': '/map/local',
+                'map_pub_topic': '/map',
                 'assemble_mode': 1
         }]
         )   
