@@ -61,6 +61,11 @@ def generate_launch_description():
                 'mask_sub_topic': '/mask/yellow',
                 'map_pub_topic': '/map/yellow'
             }]
+        ),
+        Node(
+            package='lane_mapper',
+            executable='nearest_lane_mapper_node',
+            name='nearest_lane_mapper_node'
         )
     ]
 
@@ -74,8 +79,30 @@ def generate_launch_description():
                 'map2_sub_topic': '/map/yellow/local',
                 'map_pub_topic': '/map',
                 'assemble_mode': 1
-        }]
-        )   
+            }]
+        ),
+        Node(
+            package='multimap_assembler',
+            executable='multimap_assembler_node',
+            name='multimap_assembler_node',
+            parameters=[{
+                'map1_sub_topic': '/map/white/local',
+                'map2_sub_topic': '/map/white/local/near',
+                'map_pub_topic': '/map/white/local/far',
+                'assemble_mode': 0
+            }]
+        ),
+        Node(
+            package='multimap_assembler',
+            executable='multimap_assembler_node',
+            name='multimap_assembler_node',
+            parameters=[{
+                'map1_sub_topic': '/map/white/local/near',
+                'map2_sub_topic': '/map/yellow/local',
+                'map_pub_topic': '/map/current',
+                'assemble_mode': 1
+            }]
+        )
     ]
 
     launch_local_map = [

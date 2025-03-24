@@ -84,7 +84,7 @@ private:
                         map_msg->data[index] = map2->data[index];
                     }
                 } else {
-                    if(map1->data[index] > -1 && !(map2->data[index] > -1)) {
+                    if(map1->data[index] > -1 && !(map2->data[index] > 0)) {
                         map_msg->data[index] = map1->data[index];
                     }
                 }

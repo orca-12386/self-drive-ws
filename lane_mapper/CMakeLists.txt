@@ -45,10 +45,22 @@ ament_target_dependencies(lane_mask_publisher_node
   OpenCV
 )
 
+add_executable(nearest_lane_mapper_node src/nearest_lane_mapper_node.cpp)
+ament_target_dependencies(nearest_lane_mapper_node
+  rclcpp
+  nav_msgs
+  std_msgs
+  geometry_msgs
+  std_msgs
+  nav_msgs
+  geometry_msgs
+)
+
 # Install the executable
 install(TARGETS
   lane_mapper_node
   lane_mask_publisher_node
+  nearest_lane_mapper_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
