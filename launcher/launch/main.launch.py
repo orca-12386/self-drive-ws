@@ -14,7 +14,7 @@ def generate_launch_description():
     gazebo_ros_package = get_package_share_directory('gazebo_ros')
     gazebo_launch_file = os.path.join(gazebo_ros_package, 'launch', 'gazebo.launch.py')
     world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_lights.world')
-    robot_file = os.path.join(robo_desc_dir,'launch','robot_gazebo.launch.py')
+    robot_file = os.path.join(robo_desc_dir,'launch','robot.launch.py')
 
     launch_world_robot = [
         SetEnvironmentVariable(
