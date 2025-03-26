@@ -124,6 +124,25 @@ def generate_launch_description():
         )
     ]
 
+    launch_pose_publishers = [
+        Node(
+            package='robot_pose_publisher',
+            executable='robot_pose_publisher_node',
+            name='robot_pose_publisher',
+            parameters=[{
+                'map_sub_topic': '/map/white'
+            }]       
+        ),
+        Node(
+            package='robot_pose_publisher',
+            executable='robot_pose_publisher_node',
+            name='robot_pose_publisher',
+            parameters=[{
+                'map_sub_topic': '/map'
+            }]       
+        ),
+    ]
+
     launch_transforms =  [
         # Node(
         #     package='height_mapper',
@@ -147,11 +166,11 @@ def generate_launch_description():
             name='static_transform_publisher',
             arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'link_base']
         ),
-        Node(
-            package='robot_pose_publisher',
-            executable='robot_pose_publisher_node',
-            name='robot_pose_publisher'
-        ),
+        # Node(
+        #     package='robot_pose_publisher',
+        #     executable='robot_pose_publisher_node',
+        #     name='robot_pose_publisher'
+        # ),
         Node(
             package='tf_odom_link_base',
             executable='tf_odom',
@@ -165,6 +184,7 @@ def generate_launch_description():
     launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)
     launch_description.extend(launch_local_map)
+    launch_description.extend(launch_pose_publishers)
     launch_description.extend(launch_map_ensemble)
     launch_description.extend(launch_transforms)
 

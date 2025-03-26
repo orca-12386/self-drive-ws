@@ -10,9 +10,12 @@
 class RobotPosePublisher : public rclcpp::Node {
 public:
     RobotPosePublisher() : Node("robot_pose_publisher") {
+        this->declare_parameter("map_sub_topic", rclcpp::PARAMETER_STRING);
+        std::string map_sub_topic = this->get_parameter("map_sub_topic").as_string();
+        
         // Initialize subscribers
         map_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "/map/white", 10, 
+            map_sub_topic, 10, 
             std::bind(&RobotPosePublisher::mapCallback, this, std::placeholders::_1));
         
         odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
@@ -21,11 +24,11 @@ public:
 
         // Initialize publishers
         global_pose_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
-            "robot_pose_global", 10);
+            map_sub_topic+"/robot_pose_global", 10);
         grid_pose_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
-            "robot_pose_grid", 10);
+            map_sub_topic+"/robot_pose_grid", 10);
         orientation_pub_ = create_publisher<std_msgs::msg::Float64>(
-            "robot_orientation", 10);
+            map_sub_topic+"/robot_orientation", 10);
 
         // Initialize TF buffer and listener
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
