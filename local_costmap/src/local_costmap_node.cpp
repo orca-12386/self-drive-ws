@@ -28,7 +28,7 @@ public:
             map_sub_topic, 10, std::bind(&LocalCostmapPublisher::mapCallback, this, std::placeholders::_1));
         
         pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            "/robot_pose_global", 10, std::bind(&LocalCostmapPublisher::poseCallback, this, std::placeholders::_1));
+            map_sub_topic+"/robot_pose_global", 10, std::bind(&LocalCostmapPublisher::poseCallback, this, std::placeholders::_1));
 
         // Publisher for local costmap
         costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
