@@ -16,6 +16,7 @@ def generate_launch_description():
     world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_lights.world')
     robot_file = os.path.join(robo_desc_dir,'launch','robot.launch.py')
 
+    # Existing launch configurations...
     launch_world_robot = [
         SetEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
@@ -35,6 +36,7 @@ def generate_launch_description():
         )
     ]
 
+    # Existing launch configurations...
     launch_lane_masker = [
         Node(
             package='lane_mapper',
@@ -43,6 +45,24 @@ def generate_launch_description():
         )
     ]
 
+    # New lane change launch configuration
+    launch_lane_change = [
+        Node(
+            package='goal_calculator',
+            executable='lane_change_yellow',
+            name='lane_change_yellow',
+            output='screen',
+            parameters=[{
+                'config_file_path': os.path.join(
+                    get_package_share_directory('goal_calculator'), 
+                    'config', 
+                    'config.yaml'
+                )
+            }]
+        )
+    ]
+
+    # Rest of the existing configurations...
     launch_lane_mapper = [
         Node(
             package='lane_mapper',
@@ -69,6 +89,7 @@ def generate_launch_description():
         )
     ]
 
+    # Existing launch configurations...
     launch_map_ensemble = [
         Node(
             package='multimap_assembler',
@@ -105,6 +126,7 @@ def generate_launch_description():
         )
     ]
 
+    # Rest of the configurations remain the same...
     launch_local_map = [
         Node(
             package='local_costmap',
@@ -144,16 +166,6 @@ def generate_launch_description():
     ]
 
     launch_transforms =  [
-        # Node(
-        #     package='height_mapper',
-        #     executable='height_mask_publisher_node',
-        #     name='height_mask_publisher_node'
-        # ),
-        # Node(
-        #     package='height_mapper',
-        #     executable='height_mapper_node',
-        #     name='height_mapper_node'
-        # ),
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -166,15 +178,18 @@ def generate_launch_description():
             name='static_transform_publisher',
             arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'link_base']
         ),
-        # Node(
-        #     package='robot_pose_publisher',
-        #     executable='robot_pose_publisher_node',
-        #     name='robot_pose_publisher'
-        # ),
         Node(
             package='tf_odom_link_base',
             executable='tf_odom',
             name='tf_odom'
+        )
+    ]
+
+    interpolation = [
+        Node(
+            package='spline_interp',
+            executable='linear_interp',
+            name='linear_interp',
         )
     ]
     
@@ -187,5 +202,7 @@ def generate_launch_description():
     launch_description.extend(launch_pose_publishers)
     launch_description.extend(launch_map_ensemble)
     launch_description.extend(launch_transforms)
+    launch_description.extend(interpolation)
+    launch_description.extend(launch_lane_change)  # Add the lane change launch configuration
 
     return LaunchDescription(launch_description)
