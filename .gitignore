@@ -5,3 +5,4 @@ log/
 old_packages/
 __pycache__/
 *.pyc
+manas_expo_nova/
