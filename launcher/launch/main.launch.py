@@ -16,7 +16,7 @@ def generate_launch_description():
     world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_lights.world')
     robot_file = os.path.join(robo_desc_dir,'launch','robot.launch.py')
 
-    # Existing launch configurations...
+
     launch_world_robot = [
         SetEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
@@ -36,7 +36,6 @@ def generate_launch_description():
         )
     ]
 
-    # Existing launch configurations...
     launch_lane_masker = [
         Node(
             package='lane_mapper',
@@ -45,24 +44,6 @@ def generate_launch_description():
         )
     ]
 
-    # New lane change launch configuration
-    launch_lane_change = [
-        Node(
-            package='goal_calculator',
-            executable='lane_change_yellow',
-            name='lane_change_yellow',
-            output='screen',
-            parameters=[{
-                'config_file_path': os.path.join(
-                    get_package_share_directory('goal_calculator'), 
-                    'config', 
-                    'config.yaml'
-                )
-            }]
-        )
-    ]
-
-    # Rest of the existing configurations...
     launch_lane_mapper = [
         Node(
             package='lane_mapper',
@@ -89,7 +70,14 @@ def generate_launch_description():
         )
     ]
 
-    # Existing launch configurations...
+    interpolation = [
+        Node(
+            package='spline_interp',
+            executable='linear_interp',
+            name='linear_interp',
+        )
+    ]
+
     launch_map_ensemble = [
         Node(
             package='multimap_assembler',
@@ -126,7 +114,6 @@ def generate_launch_description():
         )
     ]
 
-    # Rest of the configurations remain the same...
     launch_local_map = [
         Node(
             package='local_costmap',
@@ -143,6 +130,50 @@ def generate_launch_description():
             parameters=[{
                 'map_sub_topic': '/map/white'
             }]
+        )
+    ]
+
+    launch_lane_change = [
+        Node(
+            package='goal_calculator',
+            executable='lane_change_yellow',
+            name='lane_change_yellow',
+            output='screen',
+            parameters=[{
+                'config_file_path': os.path.join(
+                    get_package_share_directory('goal_calculator'), 
+                    'config', 
+                    'config.yaml'
+                )
+            }]
+        )
+    ]
+
+
+    launch_detector = [
+        Node(
+            package='detective',
+            executable='drum_detector_node',
+            name='drum_detector_node'
+        ),
+        Node(
+            package='detective',
+            executable='pedestrian_detector_node',
+            name='pedestrian_detector_node'
+        ),
+        Node(
+            package='detective',
+            executable='stop_sign_detector_node',
+            name='stop_sign_detector_node'
+        ) 
+    ]
+
+
+    launch_behaviour_manager = [
+        Node(
+            package='behaviour_manager',
+            executable='behaviour_manager_node',
+            name='behaviour_manager_node'
         )
     ]
 
@@ -184,25 +215,25 @@ def generate_launch_description():
             name='tf_odom'
         )
     ]
-
-    interpolation = [
-        Node(
-            package='spline_interp',
-            executable='linear_interp',
-            name='linear_interp',
-        )
-    ]
     
     launch_description = list()
 
     launch_description.extend(launch_world_robot)
+    
     launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)
-    launch_description.extend(launch_local_map)
-    launch_description.extend(launch_pose_publishers)
-    launch_description.extend(launch_map_ensemble)
-    launch_description.extend(launch_transforms)
     launch_description.extend(interpolation)
-    launch_description.extend(launch_lane_change)  # Add the lane change launch configuration
+    launch_description.extend(launch_local_map)
+    launch_description.extend(launch_map_ensemble)
+    
+    launch_description.extend(launch_lane_change)
+    
+    launch_description.extend(launch_behaviour_manager)
+  
+    launch_description.extend(launch_detector)
+  
+    launch_description.extend(launch_pose_publishers)
+    launch_description.extend(launch_transforms)
+
 
     return LaunchDescription(launch_description)
