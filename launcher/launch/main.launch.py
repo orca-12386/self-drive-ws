@@ -16,6 +16,7 @@ def generate_launch_description():
     world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_lights.world')
     robot_file = os.path.join(robo_desc_dir,'launch','robot.launch.py')
 
+
     launch_world_robot = [
         SetEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
@@ -66,6 +67,14 @@ def generate_launch_description():
             package='lane_mapper',
             executable='nearest_lane_mapper_node',
             name='nearest_lane_mapper_node'
+        )
+    ]
+
+    interpolation = [
+        Node(
+            package='spline_interp',
+            executable='linear_interp',
+            name='linear_interp',
         )
     ]
 
@@ -124,17 +133,70 @@ def generate_launch_description():
         )
     ]
 
+    launch_lane_change = [
+        Node(
+            package='goal_calculator',
+            executable='lane_change_yellow',
+            name='lane_change_yellow',
+            output='screen',
+            parameters=[{
+                'config_file_path': os.path.join(
+                    get_package_share_directory('goal_calculator'), 
+                    'config', 
+                    'config.yaml'
+                )
+            }]
+        )
+    ]
+
+
+    launch_detector = [
+        Node(
+            package='detective',
+            executable='drum_detector_node',
+            name='drum_detector_node'
+        ),
+        Node(
+            package='detective',
+            executable='pedestrian_detector_node',
+            name='pedestrian_detector_node'
+        ),
+        Node(
+            package='detective',
+            executable='stop_sign_detector_node',
+            name='stop_sign_detector_node'
+        ) 
+    ]
+
+
+    launch_behaviour_manager = [
+        Node(
+            package='behaviour_manager',
+            executable='behaviour_manager_node',
+            name='behaviour_manager_node'
+        )
+    ]
+
+    launch_pose_publishers = [
+        Node(
+            package='robot_pose_publisher',
+            executable='robot_pose_publisher_node',
+            name='robot_pose_publisher',
+            parameters=[{
+                'map_sub_topic': '/map/white'
+            }]       
+        ),
+        Node(
+            package='robot_pose_publisher',
+            executable='robot_pose_publisher_node',
+            name='robot_pose_publisher',
+            parameters=[{
+                'map_sub_topic': '/map'
+            }]       
+        ),
+    ]
+
     launch_transforms =  [
-        # Node(
-        #     package='height_mapper',
-        #     executable='height_mask_publisher_node',
-        #     name='height_mask_publisher_node'
-        # ),
-        # Node(
-        #     package='height_mapper',
-        #     executable='height_mapper_node',
-        #     name='height_mapper_node'
-        # ),
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -148,11 +210,6 @@ def generate_launch_description():
             arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'link_base']
         ),
         Node(
-            package='robot_pose_publisher',
-            executable='robot_pose_publisher_node',
-            name='robot_pose_publisher'
-        ),
-        Node(
             package='tf_odom_link_base',
             executable='tf_odom',
             name='tf_odom'
@@ -162,10 +219,21 @@ def generate_launch_description():
     launch_description = list()
 
     launch_description.extend(launch_world_robot)
+    
     launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)
+    launch_description.extend(interpolation)
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
+    
+    launch_description.extend(launch_lane_change)
+    
+    launch_description.extend(launch_behaviour_manager)
+  
+    launch_description.extend(launch_detector)
+  
+    launch_description.extend(launch_pose_publishers)
     launch_description.extend(launch_transforms)
+
 
     return LaunchDescription(launch_description)

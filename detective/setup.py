@@ -10,6 +10,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (f'share/{package_name}/trained_models/', ['trained_models/Drums.pt','trained_models/Pedestrian.pt','trained_models/StopSigns.pt']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -20,9 +21,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'drummer = detective.drums:main',
-            'stop = detective.Stop:main',
-            'pedestrian = detective.pedestrian:main'
+            'drum_detector_node = detective.drum_detector_node:main',
+            'stop_sign_detector_node = detective.stop_sign_detector_node:main',
+            'pedestrian_detector_node = detective.pedestrian_detector_node:main'
         ],
     },
 )

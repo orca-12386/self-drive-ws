@@ -24,4 +24,8 @@ minimum_points: 150
 
 lane_change_goal_tolerance: 0.5
 
-offset_goal: 0.2
+offset_goal_ratio: 0.3
+
+max_search_distance: 20
+
+extrapolate_distance: 25

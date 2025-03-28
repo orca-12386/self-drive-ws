@@ -1,6 +1,7 @@
 // local_costmap_node.cpp
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -27,8 +28,8 @@ public:
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             map_sub_topic, 10, std::bind(&LocalCostmapPublisher::mapCallback, this, std::placeholders::_1));
         
-        pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            "/robot_pose_global", 10, std::bind(&LocalCostmapPublisher::poseCallback, this, std::placeholders::_1));
+        pose_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+            "/odom", 10, std::bind(&LocalCostmapPublisher::odomCallback, this, std::placeholders::_1));
 
         // Publisher for local costmap
         costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
@@ -63,7 +64,7 @@ private:
         have_map_ = true;
     }
 
-    void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     {
         current_pose_ = *msg;
         have_pose_ = true;
@@ -83,8 +84,8 @@ private:
         local_map.info.height = static_cast<unsigned int>(local_costmap_height_ / resolution_);
 
         // Calculate origin for local map centered on robot
-        local_map.info.origin.position.x = current_pose_.pose.position.x - local_costmap_width_/2;
-        local_map.info.origin.position.y = current_pose_.pose.position.y - local_costmap_height_/2;
+        local_map.info.origin.position.x = current_pose_.pose.pose.position.x - local_costmap_width_/2;
+        local_map.info.origin.position.y = current_pose_.pose.pose.position.y - local_costmap_height_/2;
         
         // Initialize data vector
         local_map.data.resize(local_map.info.width * local_map.info.height);
@@ -117,7 +118,7 @@ private:
     }
 
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub_;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
 
@@ -125,7 +126,7 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     nav_msgs::msg::OccupancyGrid global_map_;
-    geometry_msgs::msg::PoseStamped current_pose_;
+    nav_msgs::msg::Odometry current_pose_;
     bool have_map_ = false;
     bool have_pose_ = false;
 
