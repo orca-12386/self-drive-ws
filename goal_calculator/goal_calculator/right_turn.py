@@ -10,14 +10,14 @@ import math
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.right_lane_publisher = self.create_publisher(PointStamped, '/right_lane_point', 10)
         self.farthest_lane_publisher = self.create_publisher(PointStamped, '/farthest_lane_point', 10)
 
-        self.timer = self.create_timer(1.0, self.publish_goal)
+        self.timer = self.create_timer(0.1, self.publish_goal)
 
         self.map_data = None
         self.map_width = None
@@ -37,13 +37,11 @@ class RightTurnNode(Node):
         self.map_width = msg.info.width
         self.map_height = msg.info.height
         self.map_resolution = msg.info.resolution
-        self.map_origin = msg.info.origin
-        self.get_logger().info("Map Data Received")
+        self.map_origin = msg.info.origin   
 
     def odom_callback(self, msg):
         self.bot_position = msg.pose.pose.position
         self.bot_orientation = msg.pose.pose.orientation
-        self.get_logger().info(f"Bot Position: ({self.bot_position.x}, {self.bot_position.y})")
         if self.goal_pose is None:
             self.calculate_goal()
 
@@ -61,11 +59,6 @@ class RightTurnNode(Node):
         euler = tf_transformations.euler_from_quaternion([quat.x, quat.y, quat.z, quat.w])
         return euler[2]
 
-    def find_slope(self, point1, point2):
-        if point1[0] == point2[0]:  
-            return None 
-        return (point2[1] - point1[1]) / (point2[0] - point1[0])
-
     def find_right_lane_point(self):
         self.get_logger().info("Searching for right lane")
         bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
@@ -73,19 +66,12 @@ class RightTurnNode(Node):
         queue = deque([start])
         visited = {start}
 
-        yaw = self.get_yaw_from_quaternion(self.bot_orientation)
-        if -np.pi/4 <= yaw < np.pi/4:  
-            directions = [(1, 0), (0, 1), (0, -1), (1, 1), (1, -1)]
-        elif np.pi/4 <= yaw < 3*np.pi/4:
-            directions = [(0, 1), (-1, 0), (1, 0), (-1, 1), (1, 1)]
-        elif -3*np.pi/4 <= yaw < -np.pi/4:  
-            directions = [(0, -1), (-1, 0), (1, 0), (-1, -1), (1, -1)]
-        else:  
-            directions = [(-1, 0), (0, 1), (0, -1), (-1, 1), (-1, -1)]
-
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+    
         while queue:
             x, y = queue.popleft()
             if self.map_data[y, x] > 0:
+                self.get_logger().info(f"Right Lane Found: ({x}, {y})")
                 return (x, y)
             for dx, dy in directions:
                 nx, ny = x + dx, y + dy
@@ -106,10 +92,8 @@ class RightTurnNode(Node):
         directions = []
         for dx, dy in all_directions:
             dot_product = dx * fx + dy * fy  
-            print(f"Direction: {(dx, dy)}, Dot Product: {dot_product}")
-            if dot_product > -0.5:  
+            if dot_product > 0:  
                 directions.append((dx, dy))
-
 
         queue = deque([start])
         visited = {start}
@@ -145,11 +129,11 @@ class RightTurnNode(Node):
         if self.farthest_point is None:
             return
         
-        bot_map_x, bot_map_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
         right_map_x, right_map_y = self.right_lane_point
+        right_world_x, right_world_y = self.map_to_world(right_map_x, right_map_y)
 
-        direction_x = right_map_x - bot_map_x
-        direction_y = right_map_y - bot_map_y
+        direction_x = right_world_x - self.bot_position.x
+        direction_y = right_world_y - self.bot_position.y
 
         goal_yaw = math.atan2(direction_y, direction_x)
 
@@ -159,8 +143,11 @@ class RightTurnNode(Node):
 
         goal_x, goal_y = self.map_to_world(self.farthest_point[0], self.farthest_point[1])
 
-        offset_distance = 1.0  
+        right_lane_world_x, right_lane_world_y = self.map_to_world(self.right_lane_point[0], self.  right_lane_point[1])
+        offset_distance = math.sqrt((right_lane_world_x - self.bot_position.x)**2 + (right_lane_world_y - self.bot_position.y)**2)
 
+        self.get_logger().info(f"Offset Distance: {offset_distance}")
+        
         offset_x = offset_distance * perpendicular_direction_x
         offset_y = offset_distance * perpendicular_direction_y
         goal_x += offset_x
@@ -179,11 +166,12 @@ class RightTurnNode(Node):
         self.goal_pose.pose.orientation.z = quaternion[2]
         self.goal_pose.pose.orientation.w = quaternion[3]
 
+        self.get_logger().info(f"Goal Published: ({self.goal_pose.pose.position.x}, {self.goal_pose.pose.position.y})")
+
     def publish_goal(self):
         if self.goal_pose is not None:
             self.goal_pose.header.stamp = self.get_clock().now().to_msg()
             self.goal_publisher.publish(self.goal_pose)
-            self.get_logger().info(f"Goal Published: ({self.goal_pose.pose.position.x}, {self.goal_pose.pose.position.y})")
         
         if self.right_lane_point is not None:
             right_lane_msg = PointStamped()
@@ -191,7 +179,6 @@ class RightTurnNode(Node):
             right_lane_msg.header.stamp = self.get_clock().now().to_msg()
             right_lane_msg.point.x, right_lane_msg.point.y = self.map_to_world(*self.right_lane_point)
             self.right_lane_publisher.publish(right_lane_msg)
-            self.get_logger().info(f"Right Lane Point Published: ({right_lane_msg.point.x}, {right_lane_msg.point.y})")
 
         if self.farthest_point is not None:
             farthest_msg = PointStamped()
@@ -199,7 +186,6 @@ class RightTurnNode(Node):
             farthest_msg.header.stamp = self.get_clock().now().to_msg()
             farthest_msg.point.x, farthest_msg.point.y = self.map_to_world(*self.farthest_point)
             self.farthest_lane_publisher.publish(farthest_msg)
-            self.get_logger().info(f"Farthest Lane Point Published: ({farthest_msg.point.x}, {farthest_msg.point.y})")
 
 def main(args=None):
     rclpy.init(args=args)

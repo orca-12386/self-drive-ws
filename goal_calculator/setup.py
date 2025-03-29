@@ -32,7 +32,8 @@ setup(
         'console_scripts': [
             'goal_calc = goal_calculator.goal_calc2:main',
             'lane_change = goal_calculator.lane_change:main',
-            'lane_change_yellow = goal_calculator.lane_change_yellow:main'
+            'right_turn = goal_calculator.right_turn:main',
+            'left_turn = goal_calculator.left_turn:main'
         ],
     },
 )
