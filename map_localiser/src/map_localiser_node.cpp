@@ -42,7 +42,7 @@ private:
     void loadParams()
     {
         // Read YAML file
-        std::string config_path = ament_index_cpp::get_package_share_directory("local_costmap") + 
+        std::string config_path = ament_index_cpp::get_package_share_directory("map_localiser") + 
                                  "/config/costmap_params.yaml";
         YAML::Node config = YAML::LoadFile(config_path);
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(planner_server)
+project(planner_server_dwb)
 
 # find dependencies
 find_package(ament_cmake REQUIRED)

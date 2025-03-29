@@ -3,10 +3,10 @@ from launch_ros.actions import Node
 import os
 from ament_index_python.packages import get_package_share_directory
 
-nav2_yaml = os.path.join(get_package_share_directory('planner_server'), 'config','planner_server.yaml')
-controller_yaml = os.path.join(get_package_share_directory('planner_server'), 'config','controller.yaml')
-bt_navigator_yaml = os.path.join(get_package_share_directory('planner_server'), 'config','bt_navigator.yaml')
-recovery_yaml = os.path.join(get_package_share_directory('planner_server'), 'config','recovery.yaml')
+nav2_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','planner_server.yaml')
+controller_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','controller.yaml')
+bt_navigator_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','bt_navigator.yaml')
+recovery_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','recovery.yaml')
 
 def generate_launch_description():
     return LaunchDescription([

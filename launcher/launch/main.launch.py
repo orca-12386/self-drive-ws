@@ -116,17 +116,17 @@ def generate_launch_description():
 
     launch_local_map = [
         Node(
-            package='local_costmap',
-            executable='local_costmap_node',
-            name='local_costmap_node',
+            package='map_localiser',
+            executable='map_localiser_node',
+            name='map_localiser_node',
             parameters=[{
                 'map_sub_topic': '/map/yellow'
             }]
         ),
         Node(
-            package='local_costmap',
-            executable='local_costmap_node',
-            name='local_costmap_node',
+            package='map_localiser',
+            executable='map_localiser_node',
+            name='map_localiser_node',
             parameters=[{
                 'map_sub_topic': '/map/white'
             }]
@@ -196,6 +196,18 @@ def generate_launch_description():
         ),
     ]
 
+    launch_topic_remapper = [
+        Node(
+            package='topic_remapper',
+            executable='topic_remapper_node',
+            name='topic_remapper_node',
+            parameters=[{
+                'default_sub_topic': '/map/current',
+                'pub_topic': '/map/motion_control'
+            }]       
+        ),
+    ]
+
     launch_transforms =  [
         Node(
             package='tf2_ros',
@@ -226,12 +238,14 @@ def generate_launch_description():
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
     
-    launch_description.extend(launch_lane_change)
+    # launch_description.extend(launch_lane_change)
     
     launch_description.extend(launch_behaviour_manager)
   
     launch_description.extend(launch_detector)
   
+    launch_description.extend(launch_topic_remapper)
+
     launch_description.extend(launch_pose_publishers)
     launch_description.extend(launch_transforms)
 
