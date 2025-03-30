@@ -16,6 +16,7 @@ setup(
         # Include action files
         (os.path.join('share', 'action'), glob('action/*.action')),
         (os.path.join('share', 'msg'), glob('msg/*.msg')),
+        (os.path.join('share', 'srv'), glob('srv/*.srv')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

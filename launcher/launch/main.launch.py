@@ -107,7 +107,7 @@ def generate_launch_description():
             name='multimap_assembler_node',
             parameters=[{
                 'map1_sub_topic': '/map/white/local/near',
-                'map2_sub_topic': '/map/yellow/local',
+                'map2_sub_topic': '/map/yellow/local/interp',
                 'map_pub_topic': '/map/current',
                 'assemble_mode': 1
             }]
@@ -147,6 +147,16 @@ def generate_launch_description():
                 )
             }]
         )
+    ]
+
+    launch_lane_keep = [
+        Node(
+            package='goal_calculator',
+            executable='goal_calc',
+            name='goal_calc',
+            parameters=[{
+                'config_file_path': os.path.join(get_package_share_directory('goal_calculator'), 'config','config.yaml')
+            }]),
     ]
 
 
@@ -238,7 +248,8 @@ def generate_launch_description():
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
     
-    # launch_description.extend(launch_lane_change)
+    launch_description.extend(launch_lane_change)
+    launch_description.extend(launch_lane_keep)
     
     launch_description.extend(launch_behaviour_manager)
   

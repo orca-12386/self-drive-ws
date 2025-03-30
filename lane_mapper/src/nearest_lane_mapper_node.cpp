@@ -158,9 +158,9 @@ private:
 
     void filter_and_publish_map(const nav_msgs::msg::Odometry::SharedPtr odom, const nav_msgs::msg::OccupancyGrid::SharedPtr map) {
         if(nearest_map_msg->data.size() != map->data.size()) {
-            nearest_map_msg->data.resize(map->data.size(), -1);
+            nearest_map_msg->data.resize(map->data.size(), 0);
         } else {
-            std::fill(std::begin(nearest_map_msg->data), std::end(nearest_map_msg->data), -1);
+            std::fill(std::begin(nearest_map_msg->data), std::end(nearest_map_msg->data), 0);
         }
         nearest_map_msg->info.width = map->info.width;
         nearest_map_msg->info.height = map->info.height;

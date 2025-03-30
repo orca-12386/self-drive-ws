@@ -14,8 +14,9 @@ from scipy.spatial import cKDTree
 import statistics
 import time
 from collections import defaultdict
-from std_msgs.msg import Bool as LaneKeepDisable
 from goal_calculator.ros2_wrapper import Subscription, Message, Publisher, Config, NodeGlobal
+from interfaces.srv import LaneKeepToggle
+import scipy
 
 
 # convention: all coordinates are grid unless specified global in variable
@@ -48,6 +49,14 @@ def convert_to_grid_coords(coord):
     newcoord = [coord[0]-origin[0], coord[1]-origin[1]]
     newcoord = np.array([x/map_message.info.resolution for x in newcoord])
     return newcoord
+
+
+def get_point_at_distance(point, quaternion, distance):
+    rotation = scipy.spatial.transform.Rotation.from_quat(quaternion)
+    direction = np.array([0, 0, 1])  # Change if using a different convention
+    rotated_direction = rotation.apply(direction)
+    new_point = np.array(point) + distance * rotated_direction
+    return new_point
         
 
 class CandidateGoal:
@@ -176,6 +185,8 @@ class GoalCalculator(Node):
         
         NodeGlobal.obj = self
 
+        self.running = False
+
         NodeGlobal.log_info("Initialising node")
 
         self.declare_parameter('config_file_path', 'default_value')
@@ -186,12 +197,12 @@ class GoalCalculator(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         
         subscription_info = {
-            "map": ["local_map", OccupancyGrid],
+            "map": ["/map/current", OccupancyGrid],
             "odom": ["odom", Odometry],
-            "robot_pose_global": ["robot_pose_global", PoseStamped],
-            "robot_pose_grid": ["robot_pose_grid", PoseStamped],
-            "robot_orientation": ["robot_orientation", Float64, 10],
-            "lane_keep_disable": ["lane_keep_disable", LaneKeepDisable]
+            "robot_pose_global": ["/map/robot_pose_global", PoseStamped],
+            "robot_pose_grid": ["/map/robot_pose_grid", PoseStamped],
+            "robot_orientation": ["/map/robot_orientation", Float64, 10],
+            # "lane_keep_disable": ["lane_keep_disable", LaneKeepDisable]
         }
 
         Subscription.create_subscriptions(subscription_info)
@@ -211,12 +222,16 @@ class GoalCalculator(Node):
         self.start = True
         self.shutdown = False
 
+        self.toggle_lane_keep_srv = self.create_service(LaneKeepToggle, 'toggle_lane_keep', self.LaneKeepToggleCallback)
+
         NodeGlobal.log_info("Node initialized")
 
+    def LaneKeepToggleCallback(self, request, response):
+        self.running = request.toggle
+        return response
 
     def controller(self):
-        lane_keep_disable = Subscription.subs["lane_keep_disable"].get_latest_data()
-        if lane_keep_disable == False:
+        if self.running == True:
             NodeGlobal.log_info("Controller is active")
             robot_coords_grid = Subscription.subs["robot_pose_grid"].get_latest_data()
             robot_coords_global = Subscription.subs["robot_pose_global"].get_latest_data()
@@ -229,7 +244,21 @@ class GoalCalculator(Node):
             if self.start == True:
                 NodeGlobal.log_info("Publishing start goal")
                 NodeGlobal.goals.append(np.array(robot_coords_global))
-                self.publish_goal(self.create_goal_pose(np.array([robot_coords_global[0]+Config.config["start_goal_distance"], robot_coords_global[1]])))
+                
+                odometry_msg = Subscription.subs["odom"].get_latest_data()
+                pos = np.array([
+                    odometry_msg.pose.pose.position.x,
+                    odometry_msg.pose.pose.position.y,
+                    odometry_msg.pose.pose.position.z
+                ])
+                quat = np.array([
+                    odometry_msg.pose.pose.orientation.x,
+                    odometry_msg.pose.pose.orientation.y,
+                    odometry_msg.pose.pose.orientation.z,
+                    odometry_msg.pose.pose.orientation.w
+                ])
+                first_goal = get_point_at_distance(pos, quat, Config.config["start_goal_distance"])
+                self.publish_goal(self.create_goal_pose(first_goal))
                 self.start = False
                 return
             # self.check_shutdown()
@@ -351,17 +380,18 @@ class GoalCalculator(Node):
         return goal_pose
 
     def publish_goal(self, goal_pose):
-        parsed_goal = Message.static_parse_message(goal_pose, PoseStamped)
-        Publisher.pubs["goal_pose"].publish(goal_pose)
-        if len(NodeGlobal.goals)<=1 or calculate_distance(NodeGlobal.goals[-1], parsed_goal)>Config.config["goal_logger_in_between_distance"]: 
-            NodeGlobal.goals.append(parsed_goal)
-        NodeGlobal.log_info(f"Published goal: {goal_pose}")
+        if self.running:
+            parsed_goal = Message.static_parse_message(goal_pose, PoseStamped)
+            Publisher.pubs["goal_pose"].publish(goal_pose)
+            if len(NodeGlobal.goals)<=1 or calculate_distance(NodeGlobal.goals[-1], parsed_goal)>Config.config["goal_logger_in_between_distance"]: 
+                NodeGlobal.goals.append(parsed_goal)
+            NodeGlobal.log_info(f"Published goal: {goal_pose}")
 
 
 def main(args = None):
     rclpy.init(args = args)
     NodeGlobal.goals = list()
-    Message.add_parser(LaneKeepDisable, lambda message: message.data)
+    # Message.add_parser(LaneKeepDisable, lambda message: message.data)
     goal_calculator = GoalCalculator()
     rclpy.spin(goal_calculator)
     goal_calculator.destroy_node()
