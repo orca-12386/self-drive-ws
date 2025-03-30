@@ -12,7 +12,7 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/LaneChangeAction.action"
-  "srv/LaneKeepToggle.srv"
+  "srv/LaneFollowToggle.srv"
   DEPENDENCIES std_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)

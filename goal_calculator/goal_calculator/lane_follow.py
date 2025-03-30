@@ -15,7 +15,7 @@ import statistics
 import time
 from collections import defaultdict
 from goal_calculator.ros2_wrapper import Subscription, Message, Publisher, Config, NodeGlobal
-from interfaces.srv import LaneKeepToggle
+from interfaces.srv import LaneFollowToggle
 import scipy
 
 
@@ -202,7 +202,7 @@ class GoalCalculator(Node):
             "robot_pose_global": ["/map/robot_pose_global", PoseStamped],
             "robot_pose_grid": ["/map/robot_pose_grid", PoseStamped],
             "robot_orientation": ["/map/robot_orientation", Float64, 10],
-            # "lane_keep_disable": ["lane_keep_disable", LaneKeepDisable]
+            # "lane_follow_disable": ["lane_follow_disable", LaneFollowDisable]
         }
 
         Subscription.create_subscriptions(subscription_info)
@@ -222,11 +222,11 @@ class GoalCalculator(Node):
         self.start = True
         self.shutdown = False
 
-        self.toggle_lane_keep_srv = self.create_service(LaneKeepToggle, 'toggle_lane_keep', self.LaneKeepToggleCallback)
+        self.toggle_lane_follow_srv = self.create_service(LaneFollowToggle, 'toggle_lane_follow', self.LaneFollowToggleCallback)
 
         NodeGlobal.log_info("Node initialized")
 
-    def LaneKeepToggleCallback(self, request, response):
+    def LaneFollowToggleCallback(self, request, response):
         self.running = request.toggle
         return response
 
@@ -391,7 +391,7 @@ class GoalCalculator(Node):
 def main(args = None):
     rclpy.init(args = args)
     NodeGlobal.goals = list()
-    # Message.add_parser(LaneKeepDisable, lambda message: message.data)
+    # Message.add_parser(LaneFollowDisable, lambda message: message.data)
     goal_calculator = GoalCalculator()
     rclpy.spin(goal_calculator)
     goal_calculator.destroy_node()

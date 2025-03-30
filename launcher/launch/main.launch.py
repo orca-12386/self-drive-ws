@@ -149,11 +149,11 @@ def generate_launch_description():
         )
     ]
 
-    launch_lane_keep = [
+    launch_lane_follow = [
         Node(
             package='goal_calculator',
-            executable='goal_calc',
-            name='goal_calc',
+            executable='lane_follow',
+            name='lane_follow',
             parameters=[{
                 'config_file_path': os.path.join(get_package_share_directory('goal_calculator'), 'config','config.yaml')
             }]),
@@ -249,7 +249,7 @@ def generate_launch_description():
     launch_description.extend(launch_map_ensemble)
     
     launch_description.extend(launch_lane_change)
-    launch_description.extend(launch_lane_keep)
+    launch_description.extend(launch_lane_follow)
     
     launch_description.extend(launch_behaviour_manager)
   
