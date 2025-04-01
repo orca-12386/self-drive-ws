@@ -42,7 +42,7 @@ public:
     yellow_mask_upper(210,255,255), 
     yellow_mask_lower(0,100,100),
     white_mask_upper(255,255,255),
-    white_mask_lower(230,230,230)
+    white_mask_lower(250,250,250)
     {
         RCLCPP_INFO(this->get_logger(), "lane_mask_publisher_node started");
 
@@ -54,6 +54,9 @@ public:
 
 private:
     void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
+        if (msg == nullptr) {
+            std::cout << "RGB Image not recieved" << std::endl;
+        }
         this->rgb_image_msg = msg;
         rgb_recv = true;
     }
@@ -73,9 +76,9 @@ private:
 
     void initialise_data() {
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/image_raw", 10, std::bind(&LaneMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
+            "/zed/zed_node/rgb/image_rect_color", 10, std::bind(&LaneMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/depth/image_raw", 10, std::bind(&LaneMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
+            "/zed/zed_node/depth/depth_registered", 10, std::bind(&LaneMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
         lane_change_status_sub = create_subscription<std_msgs::msg::Bool>(
             "/lane_change_status", 10, 
             std::bind(&LaneMaskPublisherNode::laneChangeStatusCallback, this, std::placeholders::_1));
@@ -84,7 +87,7 @@ private:
         rgb_recv = false;
         depth_recv = false;
         lane_change_status = false;
-        int erosion_kernel_size = 2;
+        int erosion_kernel_size = 3;
         int dilation_kernel_size = 3;
         erosion_kernel = getStructuringElement(cv::MORPH_RECT,
             cv::Size(erosion_kernel_size, erosion_kernel_size),
@@ -99,16 +102,17 @@ private:
         float minvalue;
         int horizon_rows = 0;
         for(int i = 0;i<depth_image.rows;i++) {
-            minvalue = depth_image.at<float>(i, 0);
-            for(int j = 1;j<depth_image.cols;j++) {
+            minvalue = 20;
+            for(int j = 0;j<depth_image.cols;j++) {
                 value = depth_image.at<float>(i, j);
-                if(value < minvalue) {
+                if((value < minvalue && !cvIsNaN(value) && !cvIsInf(value))) {
                     minvalue = value;
                 }
             }
             if(minvalue < 20) {
                 break;
             } else {
+                log(std::to_string(minvalue));
                 horizon_rows = i;
             }
         }
@@ -188,8 +192,13 @@ private:
             return;
         } 
 
+        if(!rgb->encoding.compare("bgra8")) {
+            cv::cvtColor(rgb_image, rgb_image, cv::COLOR_BGRA2BGR);
+            cv::cvtColor(rgb_image, rgb_image, cv::COLOR_BGR2RGB);
+        }
+
         get_white_mask(rgb_image, white_mask);
-        // erode_and_dilate(white_mask);
+        erode_and_dilate(white_mask);
         publish_mask(white_mask, white_mask_pub);
 
         get_yellow_mask(rgb_image, yellow_mask);

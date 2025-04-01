@@ -10,7 +10,7 @@ import math
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -71,8 +71,23 @@ class RightTurnNode(Node):
         while queue:
             x, y = queue.popleft()
             if self.map_data[y, x] > 0:
-                self.get_logger().info(f"Right Lane Found: ({x}, {y})")
-                return (x, y)
+                
+                is_right = False
+                bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+
+                if math.pi / 4 <= bot_yaw<= 3 * math.pi / 4:  
+                    is_right = y - 2 < bot_y < y + 2
+                elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:  
+                    is_right = y - 2 < bot_y < y + 2
+                elif (-math.pi <= bot_yaw < -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):  
+                    is_right = x - 2 < bot_x < x + 2
+                elif -math.pi / 4 < bot_yaw < math.pi / 4:  
+                    is_right = x - 2 < bot_x < x + 2
+
+                if is_right:
+                    self.get_logger().info(f"Right Lane Found: ({x}, {y})")
+                    return (x, y)
+
             for dx, dy in directions:
                 nx, ny = x + dx, y + dy
                 if (0 <= nx < self.map_width and 0 <= ny < self.map_height and (nx, ny) not in visited):
