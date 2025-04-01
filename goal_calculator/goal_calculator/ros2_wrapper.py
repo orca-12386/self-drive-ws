@@ -50,7 +50,8 @@ class Message:
         for dt, lf in Message.parsers:
             if dt == datatype:
                 return lf(message)
-
+        return message
+        
     def parse_message(self):
         return Message.static_parse_message(self.message, self.datatype)
 

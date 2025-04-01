@@ -11,8 +11,8 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='goal_calculator',
-            executable='goal_calc',
-            name='goal_calc',
+            executable='lane_follow',
+            name='lane_follow',
             output='screen',
             parameters=[{
                 'config_file_path': config_yaml

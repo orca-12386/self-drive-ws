@@ -16,6 +16,7 @@ setup(
         # Include action files
         (os.path.join('share', 'action'), glob('action/*.action')),
         (os.path.join('share', 'msg'), glob('msg/*.msg')),
+        (os.path.join('share', 'srv'), glob('srv/*.srv')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -30,7 +31,7 @@ setup(
     include_package_data=True,
     entry_points={
         'console_scripts': [
-            'goal_calc = goal_calculator.goal_calc2:main',
+            'lane_follow = goal_calculator.lane_follow:main',
             'lane_change = goal_calculator.lane_change:main',
             'right_turn = goal_calculator.right_turn:main',
             'left_turn = goal_calculator.left_turn:main',
