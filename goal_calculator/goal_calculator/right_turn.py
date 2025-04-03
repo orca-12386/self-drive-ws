@@ -1,23 +1,23 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionServer, GoalResponse
 from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PoseStamped, PointStamped
+from rclpy.executors import MultiThreadedExecutor
 import numpy as np
 import tf_transformations
 from collections import deque
 import math
+from interfaces.action import RightTurn
+import asyncio
 
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-
+        self.action_server = ActionServer(self, RightTurn, 'RightTurnAction', execute_callback=self.execute_callback)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
-        self.right_lane_publisher = self.create_publisher(PointStamped, '/right_lane_point', 10)
-        self.farthest_lane_publisher = self.create_publisher(PointStamped, '/farthest_lane_point', 10)
-
-        self.timer = self.create_timer(0.1, self.publish_goal)
 
         self.map_data = None
         self.map_width = None
@@ -42,8 +42,6 @@ class RightTurnNode(Node):
     def odom_callback(self, msg):
         self.bot_position = msg.pose.pose.position
         self.bot_orientation = msg.pose.pose.orientation
-        if self.goal_pose is None:
-            self.calculate_goal()
 
     def world_to_map(self, x, y):
         map_x = int((x - self.map_origin.position.x) / self.map_resolution)
@@ -60,6 +58,13 @@ class RightTurnNode(Node):
         return euler[2]
 
     def find_right_lane_point(self):
+        if self.bot_position is None:
+            self.get_logger().info("Odometry Not Received")
+            return
+        if self.map_data is None:
+            self.get_logger().info("Map Data Not Received")
+            return
+        
         self.get_logger().info("Searching for right lane")
         bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
         start = (bot_x, bot_y)
@@ -187,27 +192,53 @@ class RightTurnNode(Node):
         if self.goal_pose is not None:
             self.goal_pose.header.stamp = self.get_clock().now().to_msg()
             self.goal_publisher.publish(self.goal_pose)
-        
-        if self.right_lane_point is not None:
-            right_lane_msg = PointStamped()
-            right_lane_msg.header.frame_id = 'map'
-            right_lane_msg.header.stamp = self.get_clock().now().to_msg()
-            right_lane_msg.point.x, right_lane_msg.point.y = self.map_to_world(*self.right_lane_point)
-            self.right_lane_publisher.publish(right_lane_msg)
+    
+    def goal_reached(self):
+        if self.goal_pose is None:
+            return False
+        distance = math.sqrt((self.goal_pose.pose.position.x - self.bot_position.x)**2 + (self.goal_pose.pose.position.y - self.bot_position.y)**2)
+        return distance < 0.2
 
-        if self.farthest_point is not None:
-            farthest_msg = PointStamped()
-            farthest_msg.header.frame_id = 'map'
-            farthest_msg.header.stamp = self.get_clock().now().to_msg()
-            farthest_msg.point.x, farthest_msg.point.y = self.map_to_world(*self.farthest_point)
-            self.farthest_lane_publisher.publish(farthest_msg)
+    async def execute_callback(self, goal_handle):
+        self.get_logger().info("Executing Right Turn")
+        try:
+            self.calculate_goal()
+            if self.goal_pose is None:
+                self.get_logger().info("Could Not Calculate Goal")
+                goal_handle.abort()
+                return RightTurn.Result()
 
+            self.publish_goal()
+
+            while rclpy.ok():
+                if self.goal_reached():
+                    self.get_logger().info("Goal Reached")
+                    goal_handle.succeed()
+                    result = RightTurn.Result()
+                    result.success = True
+                    return result
+                self.publish_goal()
+                asyncio.sleep(0.1)
+
+        except Exception as e:
+            self.get_logger().error(f"Error: {e}")
+            goal_handle.abort()
+            return RightTurn.Result()
+                
 def main(args=None):
     rclpy.init(args=args)
     node = RightTurnNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
+
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        self.get_logger().info("Keyboard Interrupt")
+    finally:
+        executor.shutdown()
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
