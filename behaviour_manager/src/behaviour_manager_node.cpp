@@ -53,6 +53,7 @@ public:
     std::array<double, 3> detection_location;
 };
 
+
 class DetectionSubscriber {
 public:
     DetectionSubscriber(rclcpp::Node* node, std::string topic, double distance_threshold, std::function<std::array<double, 3>()> get_odometry_location_func, std::function<double()> get_odometry_yaw_func) {
@@ -164,14 +165,16 @@ template<typename interface_type>
 class GoalActionClient {
 public:
     using action_goal_handle = typename rclcpp_action::ClientGoalHandle<interface_type>;
+    std::shared_future<typename action_goal_handle::SharedPtr> result_future;
 
     GoalActionClient(rclcpp::Node* node, std::string action_topic) {
-        this->client_ = rclcpp_action::create_client<interface_type>(node, action_topic);
+        client_cb_group = nullptr;
+        this->client_ = rclcpp_action::create_client<interface_type>(node, action_topic, client_cb_group);
         this->node = node;
         result_recv = false;
     }
 
-    void send_goal_and_wait(typename interface_type::Goal& goal_msg, typename rclcpp_action::Client<interface_type>::SendGoalOptions& send_goal_options) {
+    void send_goal(typename interface_type::Goal& goal_msg, typename rclcpp_action::Client<interface_type>::SendGoalOptions& send_goal_options) {
         if (!client_->wait_for_action_server(std::chrono::seconds(10))) {
             RCLCPP_ERROR(node->get_logger(), "Action server not available.");
             return;
@@ -180,13 +183,19 @@ public:
         result_recv = false;
 
         send_goal_options.goal_response_callback = std::bind(&GoalActionClient::goal_response_callback, this, std::placeholders::_1);
-        send_goal_options.feedback_callback = std::bind(&GoalActionClient::feedback_callback, this, std::placeholders::_1, std::placeholders::_2);
+        // send_goal_options.feedback_callback = std::bind(&GoalActionClient::feedback_callback, this, std::placeholders::_1, std::placeholders::_2);
         send_goal_options.result_callback = std::bind(&GoalActionClient::result_callback, this, std::placeholders::_1);
-        this->client_->async_send_goal(goal_msg, send_goal_options);
-        
-        while(!result_recv) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        result_future = this->client_->async_send_goal(goal_msg, send_goal_options);
+    }
+
+    void wait_for_result() {
+        while(!this->check_result_recv()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+    }
+
+    bool check_result_recv() {
+        return result_recv;
     }
 
 private:
@@ -200,16 +209,17 @@ private:
         }
     }
 
-    void feedback_callback(typename action_goal_handle::SharedPtr,
-        const std::shared_ptr<const typename interface_type::Feedback> feedback)
-    {
+    // void feedback_callback(typename action_goal_handle::SharedPtr,
+    //     const std::shared_ptr<const typename interface_type::Feedback> feedback)
+    // {
 
-    }
+    // }
 
     void result_callback(const typename action_goal_handle::WrappedResult & result) {
         result_recv = true;
         switch (result.code) {
             case rclcpp_action::ResultCode::SUCCEEDED:
+                RCLCPP_INFO(node->get_logger(), "Goal action succeeded");
                 break;
             case rclcpp_action::ResultCode::ABORTED:
                 RCLCPP_ERROR(node->get_logger(), "Goal was aborted");
@@ -226,6 +236,7 @@ private:
     bool result_recv;
     rclcpp::Node* node;
     typename rclcpp_action::Client<interface_type>::SharedPtr client_;
+    rclcpp::CallbackGroup::SharedPtr client_cb_group;
 };
 
 
@@ -237,15 +248,18 @@ public:
 
         this->initialise_data();
 
+        timer_cb_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+ 
         timer = this->create_wall_timer(
-            std::chrono::milliseconds(100), std::bind(&BehaviourManagerNode::timer_callback, this));
+            std::chrono::milliseconds(100), std::bind(&BehaviourManagerNode::timer_callback, this), timer_cb_group);
     };
 
-private:
+
     void log(std::string str) {
         RCLCPP_INFO(this->get_logger(), str.c_str());
     }
 
+private:
     void initialise_data() {
         // Detector subscriptions
         // near_map_sub = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
@@ -277,10 +291,11 @@ private:
         for(auto& topic : detection_topics) {
             detection_subs[topic.first] = std::make_unique<DetectionSubscriber>(this, topic.second, detection_distance_limits.at(topic.first), std::bind(&BehaviourManagerNode::get_odometry_location, this), std::bind(&BehaviourManagerNode::get_odometry_yaw, this));
         }
-        
+
+
         // Actions: Lane change, left turn, right turn
         this->lane_change_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "lane_change");
-        this->stop_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopServer");
+        this->stop_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopAction");
 
         // Services: Start/stop lane follow, change planner topic
         change_planner_topic_srv_client = this->create_client<topic_remapper::srv::ChangeTopic>("change_topic");
@@ -322,13 +337,14 @@ private:
             }
             log("service not available, waiting again...");
         }
+        log("Sending service requet");
         auto result = client->async_send_request(request);
-        if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) ==
-          rclcpp::FutureReturnCode::SUCCESS)
-        {
+        // log("Waiting for service completion");
+        // result.wait();
+        if(result.valid()) {
             log("Successfully called service");
         } else {
-            log("Error during service call");
+            log("Service call invalid");
         }
     }
 
@@ -348,15 +364,22 @@ private:
         for(const auto & topic : detection_subs) {
             is_detected[topic.first] = topic.second->is_detected();
         }
+        auto lane_follow_toggle_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
+            
         if(is_detected.at("stop_sign")) {
             log("Stop sign detected");
-            auto request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
-            request->toggle = true;
-            call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, request);
-            auto goal_msg = create_goal_message(1);
+
+            lane_follow_toggle_request->toggle = false;            
+            call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, lane_follow_toggle_request);
+            
             auto send_goal_options = create_send_goal_options();
-            stop_action_client->send_goal_and_wait(goal_msg, send_goal_options);
-            call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, request);
+            auto goal_msg = create_goal_message(1);
+            stop_action_client->send_goal(goal_msg, send_goal_options);
+            stop_action_client->wait_for_result();
+            RCLCPP_INFO(this->get_logger(), "Received response");
+
+            lane_follow_toggle_request->toggle = true;
+            call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, lane_follow_toggle_request);
         } else if(is_detected.at("tyre")) {
             log("Tyre detected");
             // stop following
@@ -437,13 +460,18 @@ keep
     std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client;
     rclcpp::Client<topic_remapper::srv::ChangeTopic>::SharedPtr change_planner_topic_srv_client;
     rclcpp::Client<interfaces::srv::LaneFollowToggle>::SharedPtr lane_follow_toggle_srv_client;
+
+    rclcpp::CallbackGroup::SharedPtr timer_cb_group;
 };
 
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<BehaviourManagerNode>();
-    rclcpp::spin(node);
+    rclcpp::executors::MultiThreadedExecutor executor;
+    executor.add_node(node);
+    // rclcpp::spin(node);
+    executor.spin();
     rclcpp::shutdown();
     return 0;
 }

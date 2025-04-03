@@ -40,8 +40,7 @@ class StopServer(Node):
         rate = self.create_rate(2)  
 
         while True:
-            if self.current_cmd_vel is None:
-                self.get_logger().info("Stop Action Completed")
+            if self.current_cmd_vel.linear.x==0 and self.current_cmd_vel.angular.z == 0:
                 break
             
             self.goal_pose.pose.position = self.bot_position

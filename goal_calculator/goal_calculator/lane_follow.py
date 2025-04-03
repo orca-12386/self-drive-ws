@@ -214,8 +214,8 @@ class GoalCalculator(Node):
         Publisher.create_publishers(publisher_info)
         NodeGlobal.log_info("Publishers created")
 
-        self.timer = self.create_timer(Config.config["controller_interval"], self.controller)
-        NodeGlobal.log_info("Timer created")
+        # self.timer = self.create_timer(Config.config["controller_interval"], self.controller)
+        # NodeGlobal.log_info("Timer created")
 
         NodeGlobal.goals = list()
         
@@ -227,7 +227,16 @@ class GoalCalculator(Node):
         NodeGlobal.log_info("Node initialized")
 
     def LaneFollowToggleCallback(self, request, response):
-        self.running = request.toggle
+        if request.toggle:
+            if not self.running:
+                NodeGlobal.log_info("Creating timer")
+                self.timer = self.create_timer(Config.config["controller_interval"], self.controller)
+                NodeGlobal.log_info("Timer created")
+            self.running = True
+        else:
+            if self.running:
+                self.timer.cancel()
+            self.running = False
         response.success = True
         return response
 
