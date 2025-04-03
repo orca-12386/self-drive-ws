@@ -32,11 +32,12 @@ private:
         RCLCPP_INFO(this->get_logger(), str.c_str());
     }
 
-    void change_topic(const std::shared_ptr<topic_remapper::srv::ChangeTopic::Request> request) {
+    void change_topic(const std::shared_ptr<topic_remapper::srv::ChangeTopic::Request> request, std::shared_ptr<topic_remapper::srv::ChangeTopic::Response> response) {
         RCLCPP_INFO(rclcpp::get_logger("rclcpp"), request->new_topic.c_str());
         sub.reset();
         sub = this->create_subscription<message_type>(
             std::string(request->new_topic), 10, std::bind(&TopicRemapperNode::topic_callback, this, std::placeholders::_1));
+        response->success = true;
         return;
     }
 
@@ -46,7 +47,7 @@ private:
 
         sub = this->create_subscription<message_type>(default_sub_topic, 10, std::bind(&TopicRemapperNode::topic_callback, this, std::placeholders::_1));
         pub = this->create_publisher<message_type>(pub_topic, 10);
-        change_topic_service = this->create_service<topic_remapper::srv::ChangeTopic>("change_topic", std::bind(&TopicRemapperNode::change_topic, this, std::placeholders::_1));
+        change_topic_service = this->create_service<topic_remapper::srv::ChangeTopic>("change_topic", std::bind(&TopicRemapperNode::change_topic, this, std::placeholders::_1, std::placeholders::_2));
     }
 
     void topic_callback(std::shared_ptr<message_type> msg) {

@@ -42,9 +42,13 @@ public:
     yellow_mask_upper(210,255,255), 
     yellow_mask_lower(0,100,100),
     white_mask_upper(255,255,255),
-    white_mask_lower(250,250,250)
+    white_mask_lower(230,230,230)
+    // white_mask_lower(250,250,250)
     {
         RCLCPP_INFO(this->get_logger(), "lane_mask_publisher_node started");
+
+        this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
+        this->declare_parameter("color_sub_topic", rclcpp::PARAMETER_STRING);
 
         this->initialise_data();
 
@@ -54,9 +58,6 @@ public:
 
 private:
     void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
-        if (msg == nullptr) {
-            std::cout << "RGB Image not recieved" << std::endl;
-        }
         this->rgb_image_msg = msg;
         rgb_recv = true;
     }
@@ -75,13 +76,15 @@ private:
     }
 
     void initialise_data() {
+        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
+        std::string color_sub_topic = this->get_parameter("color_sub_topic").as_string();
+        log(color_sub_topic);
+        log(depth_sub_topic);
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed/zed_node/rgb/image_rect_color", 10, std::bind(&LaneMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
+            color_sub_topic, 10, std::bind(&LaneMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed/zed_node/depth/depth_registered", 10, std::bind(&LaneMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
-        lane_change_status_sub = create_subscription<std_msgs::msg::Bool>(
-            "/lane_change_status", 10, 
-            std::bind(&LaneMaskPublisherNode::laneChangeStatusCallback, this, std::placeholders::_1));
+            depth_sub_topic, 10, std::bind(&LaneMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
+        
         white_mask_pub = this->create_publisher<sensor_msgs::msg::Image>("/mask/white", 10);
         yellow_mask_pub = this->create_publisher<sensor_msgs::msg::Image>("/mask/yellow", 10);
         rgb_recv = false;
@@ -112,7 +115,7 @@ private:
             if(minvalue < 20) {
                 break;
             } else {
-                log(std::to_string(minvalue));
+                // log(std::to_string(minvalue));
                 horizon_rows = i;
             }
         }

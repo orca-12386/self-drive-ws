@@ -1,6 +1,0 @@
-int32 left_turn
----
-bool feedback
----
-string feedback
-

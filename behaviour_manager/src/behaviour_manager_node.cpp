@@ -7,6 +7,13 @@
 #include <std_msgs/msg/bool.hpp>
 #include <geometry_msgs/msg/point.hpp>
 
+#include <interfaces/action/goal_action.hpp>
+#include <interfaces/srv/lane_follow_toggle.hpp>
+#include <topic_remapper/srv/change_topic.hpp>
+
+#include "rclcpp_action/rclcpp_action.hpp"
+#include "rclcpp_components/register_node_macro.hpp"
+
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/LinearMath/Matrix3x3.h"
 
@@ -24,6 +31,7 @@ public:
         this->detection_location = detection_location;
         this->robot_location = robot_location;
         this->distance = calculate_distance(robot_location);
+        this->action = false;
     }
 
     double calculate_distance(std::array<double, 3> reference_location) {
@@ -39,6 +47,7 @@ public:
         return dist <= threshold;
     }
     
+    bool action;
     double distance;
     std::array<double, 3> robot_location;
     std::array<double, 3> detection_location;
@@ -60,7 +69,8 @@ public:
         Detection* det;
         bool status = this->get_latest_detection(det);
         if(status) {
-            if(det->validate_distance(this->distance_threshold, get_odometry_location_func())) {
+            if(det->validate_distance(this->distance_threshold, get_odometry_location_func()) && !det->action) {
+                det->action = true;
                 return true;
             }
         }
@@ -150,6 +160,75 @@ private:
 };
     
 
+template<typename interface_type>
+class GoalActionClient {
+public:
+    using action_goal_handle = typename rclcpp_action::ClientGoalHandle<interface_type>;
+
+    GoalActionClient(rclcpp::Node* node, std::string action_topic) {
+        this->client_ = rclcpp_action::create_client<interface_type>(node, action_topic);
+        this->node = node;
+        result_recv = false;
+    }
+
+    void send_goal_and_wait(typename interface_type::Goal& goal_msg, typename rclcpp_action::Client<interface_type>::SendGoalOptions& send_goal_options) {
+        if (!client_->wait_for_action_server(std::chrono::seconds(10))) {
+            RCLCPP_ERROR(node->get_logger(), "Action server not available.");
+            return;
+        }
+
+        result_recv = false;
+
+        send_goal_options.goal_response_callback = std::bind(&GoalActionClient::goal_response_callback, this, std::placeholders::_1);
+        send_goal_options.feedback_callback = std::bind(&GoalActionClient::feedback_callback, this, std::placeholders::_1, std::placeholders::_2);
+        send_goal_options.result_callback = std::bind(&GoalActionClient::result_callback, this, std::placeholders::_1);
+        this->client_->async_send_goal(goal_msg, send_goal_options);
+        
+        while(!result_recv) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        }
+    }
+
+private:
+    void goal_response_callback(typename action_goal_handle::SharedPtr future)
+    {
+        auto goal_handle = future.get();
+        if (!goal_handle) {
+            RCLCPP_ERROR(node->get_logger(), "Goal was rejected by server");
+        } else {
+            RCLCPP_INFO(node->get_logger(), "Goal accepted by server, waiting for result");
+        }
+    }
+
+    void feedback_callback(typename action_goal_handle::SharedPtr,
+        const std::shared_ptr<const typename interface_type::Feedback> feedback)
+    {
+
+    }
+
+    void result_callback(const typename action_goal_handle::WrappedResult & result) {
+        result_recv = true;
+        switch (result.code) {
+            case rclcpp_action::ResultCode::SUCCEEDED:
+                break;
+            case rclcpp_action::ResultCode::ABORTED:
+                RCLCPP_ERROR(node->get_logger(), "Goal was aborted");
+                return;
+            case rclcpp_action::ResultCode::CANCELED:
+                RCLCPP_ERROR(node->get_logger(), "Goal was canceled");
+                return;
+            default:
+                RCLCPP_ERROR(node->get_logger(), "Unknown result code");
+                return;
+        }
+    }
+
+    bool result_recv;
+    rclcpp::Node* node;
+    typename rclcpp_action::Client<interface_type>::SharedPtr client_;
+};
+
+
 class BehaviourManagerNode : public rclcpp::Node
 {
 public:
@@ -199,6 +278,14 @@ private:
             detection_subs[topic.first] = std::make_unique<DetectionSubscriber>(this, topic.second, detection_distance_limits.at(topic.first), std::bind(&BehaviourManagerNode::get_odometry_location, this), std::bind(&BehaviourManagerNode::get_odometry_yaw, this));
         }
         
+        // Actions: Lane change, left turn, right turn
+        this->lane_change_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "lane_change");
+        this->stop_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopServer");
+
+        // Services: Start/stop lane follow, change planner topic
+        change_planner_topic_srv_client = this->create_client<topic_remapper::srv::ChangeTopic>("change_topic");
+        lane_follow_toggle_srv_client = this->create_client<interfaces::srv::LaneFollowToggle>("toggle_lane_follow");
+
         near_map_recv = false;
         far_map_recv = false;
         odometry_recv = false;
@@ -226,46 +313,35 @@ private:
         this->odometry_recv = true;
     }
 
-    // bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& dst) {
-    //     std::vector<std::array<int, 2>> visited_vec;
-    //     std::unordered_set<uint64_t> visited;
-    //     auto hash_coords = [](const std::array<int, 2>& coords) {
-    //         return (static_cast<uint64_t>(coords[0]) << 32) | static_cast<uint64_t>(coords[1]);
-    //     };
-    //     std::queue<std::array<int, 2>> q;
-    //     std::array<int, 2> p;
-    //     std::array<std::array<int, 2>, 4> neighbours;
-    //     q.push(src);
-    //     while(q.size()>0) {
-    //         p = q.front();
-    //         q.pop();
-    //         if(map->data[p[1]*map->info.width + p[0]] > 0) {
-    //             dst = p;
-    //             return true;
-    //         }
-    //         if(sqrt(pow(p[0]-src[0],2) + pow(p[1]-src[1],2)) > 60) {
-    //             return false;
-    //         }
-    //         neighbours[0] = {p[0]+1, p[1]};
-    //         neighbours[1] = {p[0], p[1]+1};
-    //         neighbours[2] = {p[0]-1, p[1]};
-    //         neighbours[3] = {p[0], p[1]-1};
-    //         visited_vec.push_back(p);
-    //         for(int i=0;i<4;i++) {
-    //             if(neighbours[i][0] >= map->info.width || neighbours[i][0] < 0) {
-    //                 continue;
-    //             }
-    //             if(neighbours[i][1] >= map->info.height || neighbours[i][1] < 0) {
-    //                 continue;
-    //             }
-    //             if(visited.find(hash_coords(neighbours[i])) == visited.end()) {
-    //                 q.push(neighbours[i]);
-    //                 visited.insert(hash_coords(neighbours[i]));
-    //             }
-    //         }
-    //     }
-    //     return false;
-    // }
+    template<typename service_type>
+    void call_service(const typename rclcpp::Client<service_type>::SharedPtr client, std::shared_ptr<typename service_type::Request> request) {
+        while (!client->wait_for_service(std::chrono::milliseconds(1000))) {
+            if (!rclcpp::ok()) {
+            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+            return;
+            }
+            log("service not available, waiting again...");
+        }
+        auto result = client->async_send_request(request);
+        if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) ==
+          rclcpp::FutureReturnCode::SUCCESS)
+        {
+            log("Successfully called service");
+        } else {
+            log("Error during service call");
+        }
+    }
+
+    interfaces::action::GoalAction::Goal create_goal_message(int data) {
+        auto goal_msg = interfaces::action::GoalAction::Goal();
+        goal_msg.data = data;
+        return goal_msg;
+    }
+
+    rclcpp_action::Client<interfaces::action::GoalAction>::SendGoalOptions create_send_goal_options() {
+        auto send_goal_options = rclcpp_action::Client<interfaces::action::GoalAction>::SendGoalOptions();
+        return send_goal_options;
+    }
 
     void process_detections() {
         std::unordered_map<std::string, bool> is_detected;
@@ -274,16 +350,30 @@ private:
         }
         if(is_detected.at("stop_sign")) {
             log("Stop sign detected");
+            auto request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
+            request->toggle = true;
+            call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, request);
+            auto goal_msg = create_goal_message(1);
+            auto send_goal_options = create_send_goal_options();
+            stop_action_client->send_goal_and_wait(goal_msg, send_goal_options);
+            call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, request);
         } else if(is_detected.at("tyre")) {
             log("Tyre detected");
+            // stop following
+            // lane change
+            // wait for completion
         } else if(is_detected.at("traffic_drum")) {
             log("Traffic drum detected");
+            // stop following
+            // lane change
+            // wait for completion
         } else {
             log("no detections");
+            // continue following
         }
         // obtain latest detections
         
-/*        
+/*     
 if(stop)
 automatic: stop keeping, set goal to current position. Wait for cmd vel to become 0 and then continue execution 
 manual: stop
@@ -343,6 +433,10 @@ keep
 
     std::array<double, 3> odometry_location_arr;
     double odometry_yaw;
+
+    std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client;
+    rclcpp::Client<topic_remapper::srv::ChangeTopic>::SharedPtr change_planner_topic_srv_client;
+    rclcpp::Client<interfaces::srv::LaneFollowToggle>::SharedPtr lane_follow_toggle_srv_client;
 };
 
 
@@ -353,3 +447,44 @@ int main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
+
+    // bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& dst) {
+    //     std::vector<std::array<int, 2>> visited_vec;
+    //     std::unordered_set<uint64_t> visited;
+    //     auto hash_coords = [](const std::array<int, 2>& coords) {
+    //         return (static_cast<uint64_t>(coords[0]) << 32) | static_cast<uint64_t>(coords[1]);
+    //     };
+    //     std::queue<std::array<int, 2>> q;
+    //     std::array<int, 2> p;
+    //     std::array<std::array<int, 2>, 4> neighbours;
+    //     q.push(src);
+    //     while(q.size()>0) {
+    //         p = q.front();
+    //         q.pop();
+    //         if(map->data[p[1]*map->info.width + p[0]] > 0) {
+    //             dst = p;
+    //             return true;
+    //         }
+    //         if(sqrt(pow(p[0]-src[0],2) + pow(p[1]-src[1],2)) > 60) {
+    //             return false;
+    //         }
+    //         neighbours[0] = {p[0]+1, p[1]};
+    //         neighbours[1] = {p[0], p[1]+1};
+    //         neighbours[2] = {p[0]-1, p[1]};
+    //         neighbours[3] = {p[0], p[1]-1};
+    //         visited_vec.push_back(p);
+    //         for(int i=0;i<4;i++) {
+    //             if(neighbours[i][0] >= map->info.width || neighbours[i][0] < 0) {
+    //                 continue;
+    //             }
+    //             if(neighbours[i][1] >= map->info.height || neighbours[i][1] < 0) {
+    //                 continue;
+    //             }
+    //             if(visited.find(hash_coords(neighbours[i])) == visited.end()) {
+    //                 q.push(neighbours[i]);
+    //                 visited.insert(hash_coords(neighbours[i]));
+    //             }
+    //         }
+    //     }
+    //     return false;
+    // }

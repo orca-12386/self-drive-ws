@@ -54,20 +54,26 @@ public:
     LaneMapperNode() : rclcpp::Node("lane_mapper_node") {
         RCLCPP_INFO(this->get_logger(), "lane_mapper_node started");
 
+        this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
+        this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
+        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
+        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
+
         this->declare_parameter("map_pub_topic", rclcpp::PARAMETER_STRING);
         this->declare_parameter("mask_sub_topic", rclcpp::PARAMETER_STRING);
         std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
         std::string mask_sub_topic = this->get_parameter("mask_sub_topic").as_string();
 
         // Initialise subscriptions
+
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/depth/image_raw", 10, std::bind(&LaneMapperNode::depthImageCallback, this, std::placeholders::_1));
+            depth_sub_topic, 10, std::bind(&LaneMapperNode::depthImageCallback, this, std::placeholders::_1));
 
         mask_sub = this->create_subscription<sensor_msgs::msg::Image>(
             mask_sub_topic, 10, std::bind(&LaneMapperNode::maskImageCallback, this, std::placeholders::_1));
 
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/zed_node/stereocamera/camera_info", 10, std::bind(&LaneMapperNode::cameraInfoCallback, this, std::placeholders::_1));
+            camera_info_sub_topic, 10, std::bind(&LaneMapperNode::cameraInfoCallback, this, std::placeholders::_1));
 
         odometry_sub = create_subscription<nav_msgs::msg::Odometry>(
             "/odom", 10, 

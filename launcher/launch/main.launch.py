@@ -16,6 +16,16 @@ def generate_launch_description():
     world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_lights.world')
     robot_file = os.path.join(robo_desc_dir,'launch','robot.launch.py')
 
+    SIM = True
+
+    if SIM:
+        depth_sub_topic = "/zed_node/stereocamera/depth/image_raw"
+        color_sub_topic = "/zed_node/stereocamera/image_raw"
+        camera_info_sub_topic = "/zed_node/stereocamera/camera_info"
+    else:
+        depth_sub_topic = "/zed/zed_node/depth/depth_registered"
+        color_sub_topic = "/zed/zed_node/rgb/image_rect_color"
+        camera_info_sub_topic = "/zed/zed_node/rgb/camera_info"
 
     launch_world_robot = [
         SetEnvironmentVariable(
@@ -40,7 +50,11 @@ def generate_launch_description():
         Node(
             package='lane_mapper',
             executable='lane_mask_publisher_node',
-            name='lane_mask_publisher_node'
+            name='lane_mask_publisher_node',
+            parameters=[{
+                'depth_sub_topic': depth_sub_topic,
+                'color_sub_topic': color_sub_topic,
+            }]
         )
     ]
 
@@ -50,6 +64,8 @@ def generate_launch_description():
             executable='lane_mapper_node',
             name='lane_mapper_node',
             parameters=[{
+                'depth_sub_topic': depth_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
                 'mask_sub_topic': '/mask/white',
                 'map_pub_topic': '/map/white'
             }]
@@ -59,6 +75,8 @@ def generate_launch_description():
             executable='lane_mapper_node',
             name='lane_mapper_node',
             parameters=[{
+                'depth_sub_topic': depth_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
                 'mask_sub_topic': '/mask/yellow',
                 'map_pub_topic': '/map/yellow'
             }]
@@ -133,7 +151,17 @@ def generate_launch_description():
         )
     ]
 
-    launch_lane_change = [
+
+    launch_goal_calculators = [
+        # Lane Follow
+        Node(
+            package='goal_calculator',
+            executable='lane_follow',
+            name='lane_follow',
+            parameters=[{
+                'config_file_path': os.path.join(get_package_share_directory('goal_calculator'), 'config','config.yaml')
+            }]),
+        # Lane Change
         Node(
             package='goal_calculator',
             executable='lane_change_yellow',
@@ -146,17 +174,13 @@ def generate_launch_description():
                     'config.yaml'
                 )
             }]
-        )
-    ]
-
-    launch_lane_follow = [
+        ),
+        # Stop
         Node(
             package='goal_calculator',
-            executable='lane_follow',
-            name='lane_follow',
-            parameters=[{
-                'config_file_path': os.path.join(get_package_share_directory('goal_calculator'), 'config','config.yaml')
-            }]),
+            executable='stop_server',
+            name='stop_server',
+        )
     ]
 
 
@@ -248,8 +272,7 @@ def generate_launch_description():
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
     
-    launch_description.extend(launch_lane_change)
-    launch_description.extend(launch_lane_follow)
+    launch_description.extend(launch_goal_calculators)
     
     launch_description.extend(launch_behaviour_manager)
   

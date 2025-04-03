@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.action import ActionServer, GoalResponse
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, Twist
-from interfaces.action import StopAction
+from interfaces.action import GoalAction as StopAction
 
 class StopServer(Node):
     def __init__(self):

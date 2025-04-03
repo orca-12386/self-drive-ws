@@ -228,6 +228,7 @@ class GoalCalculator(Node):
 
     def LaneFollowToggleCallback(self, request, response):
         self.running = request.toggle
+        response.success = True
         return response
 
     def controller(self):

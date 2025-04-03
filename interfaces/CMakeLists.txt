@@ -11,11 +11,8 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "action/LaneChangeAction.action"
+  "action/GoalAction.action"
   "srv/LaneFollowToggle.srv"
-  "action/LeftTurn.action"
-  "action/RightTurn.action"
-  "action/StopAction.action"
   DEPENDENCIES std_msgs
 )
 

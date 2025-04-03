@@ -1,5 +1,0 @@
-int32 stop_bot
----
-bool success  
----
-string feedback

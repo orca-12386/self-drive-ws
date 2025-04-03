@@ -9,7 +9,7 @@ import numpy as np
 from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float64
-from interfaces.action import LaneChangeAction
+from interfaces.action import GoalAction as LaneChangeAction
 from std_msgs.msg import Bool as LaneChangeStatus
 
 # These are your package-specific imports.
