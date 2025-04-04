@@ -240,6 +240,45 @@ private:
 };
 
 
+template<typename interface_type>
+class ServiceClient {
+public:
+    using shared_future = typename rclcpp::Client<interface_type>::SharedFuture; 
+
+    ServiceClient(rclcpp::Node* node, std::string service_topic) {
+        this->service_topic = service_topic;
+        this->client = node->create_client<interface_type>(service_topic);
+        this->node = node;
+        result_recv = false;
+    }
+
+    void call(std::shared_ptr<typename interface_type::Request> request) {
+        while (!client->wait_for_service(std::chrono::milliseconds(1000))) {
+            if (!rclcpp::ok()) {
+            RCLCPP_ERROR(node->get_logger(), "Interrupted while waiting for the service. Exiting.");
+            return;
+            }
+            RCLCPP_INFO(node->get_logger(), "service not available, waiting again...");
+        }
+        RCLCPP_INFO(node->get_logger(), (std::string("Sending service request to ") + std::string(service_topic)).c_str());
+        result = client->async_send_request(request);
+    }
+
+    void wait_for_result() {
+        RCLCPP_INFO(node->get_logger(), (std::string("Waiting for service ") + std::string(service_topic)).c_str());
+        result.wait();
+        RCLCPP_INFO(node->get_logger(), (std::string("Service call to ") + std::string(service_topic) + std::string("completed")).c_str());
+    }
+
+private:
+    std::string service_topic;
+    bool result_recv;
+    rclcpp::Node* node;
+    typename rclcpp::Client<interface_type>::SharedPtr client;
+    rclcpp::CallbackGroup::SharedPtr client_cb_group;
+    shared_future result;
+};
+
 class BehaviourManagerNode : public rclcpp::Node
 {
 public:
@@ -298,8 +337,8 @@ private:
         this->stop_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopAction");
 
         // Services: Start/stop lane follow, change planner topic
-        change_planner_topic_srv_client = this->create_client<topic_remapper::srv::ChangeTopic>("change_topic");
-        lane_follow_toggle_srv_client = this->create_client<interfaces::srv::LaneFollowToggle>("toggle_lane_follow");
+        this->change_planner_topic_srv_client = std::make_unique<ServiceClient<topic_remapper::srv::ChangeTopic>>(this, "change_topic");
+        this->lane_follow_toggle_srv_client = std::make_unique<ServiceClient<interfaces::srv::LaneFollowToggle>>(this, "toggle_lane_follow");
 
         lane_follow_toggle_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
         change_planner_topic_request = std::make_shared<topic_remapper::srv::ChangeTopic::Request>();
@@ -338,26 +377,6 @@ private:
         this->odometry_recv = true;
     }
 
-    template<typename service_type>
-    void call_service(const typename rclcpp::Client<service_type>::SharedPtr client, std::shared_ptr<typename service_type::Request> request) {
-        while (!client->wait_for_service(std::chrono::milliseconds(1000))) {
-            if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
-            return;
-            }
-            log("service not available, waiting again...");
-        }
-        log("Sending service requet");
-        auto result = client->async_send_request(request);
-        // log("Waiting for service completion");
-        // result.wait();
-        if(result.valid()) {
-            log("Successfully called service");
-        } else {
-            log("Service call invalid");
-        }
-    }
-
     interfaces::action::GoalAction::Goal create_goal_message(int data) {
         auto goal_msg = interfaces::action::GoalAction::Goal();
         goal_msg.data = data;
@@ -373,20 +392,23 @@ private:
     void lane_follow_start() {
         mode = 1;
         lane_follow_toggle_request->toggle = true;            
-        call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, lane_follow_toggle_request);
+        lane_follow_toggle_srv_client->call(lane_follow_toggle_request);
+        lane_follow_toggle_srv_client->wait_for_result();
         log("Started lane follow");
     }
 
     void lane_follow_stop() {
         mode = 0;
-        lane_follow_toggle_request->toggle = false;            
-        call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, lane_follow_toggle_request);
+        lane_follow_toggle_request->toggle = false;          
+        lane_follow_toggle_srv_client->call(lane_follow_toggle_request);  
+        lane_follow_toggle_srv_client->wait_for_result();
         log("Stopped lane follow");
     }
 
     void change_motion_control_map(std::string s) {
         change_planner_topic_request->new_topic = s;
-        call_service<topic_remapper::srv::ChangeTopic>(change_planner_topic_srv_client, change_planner_topic_request);
+        change_planner_topic_srv_client->call(change_planner_topic_request);
+        change_planner_topic_srv_client->wait_for_result();
         log(std::string("Changed planner map to ")+s);
     }
 
@@ -497,7 +519,6 @@ keep
 
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr lkd_pub;
 
-
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
     nav_msgs::msg::OccupancyGrid::SharedPtr map_msg, nearest_map_msg;
     nav_msgs::msg::Odometry::SharedPtr odometry_msg;
@@ -509,8 +530,9 @@ keep
 
     std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client;
 
-    rclcpp::Client<topic_remapper::srv::ChangeTopic>::SharedPtr change_planner_topic_srv_client;
-    rclcpp::Client<interfaces::srv::LaneFollowToggle>::SharedPtr lane_follow_toggle_srv_client;
+    std::unique_ptr<ServiceClient<interfaces::srv::LaneFollowToggle>> lane_follow_toggle_srv_client;
+    std::unique_ptr<ServiceClient<topic_remapper::srv::ChangeTopic>> change_planner_topic_srv_client;
+
     std::shared_ptr<interfaces::srv::LaneFollowToggle::Request> lane_follow_toggle_request;
     std::shared_ptr<topic_remapper::srv::ChangeTopic::Request> change_planner_topic_request;
 

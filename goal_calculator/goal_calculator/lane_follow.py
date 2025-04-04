@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import scipy.spatial
 import rclpy
 from rclpy.node import Node
 import tf2_ros
@@ -52,10 +53,10 @@ def convert_to_grid_coords(coord):
 
 
 def get_point_at_distance(point, quaternion, distance):
-    rotation = scipy.spatial.transform.Rotation.from_quat(quaternion)
-    direction = np.array([0, 0, 1])  # Change if using a different convention
-    rotated_direction = rotation.apply(direction)
-    new_point = np.array(point) + distance * rotated_direction
+    r = scipy.spatial.transform.Rotation.from_quat([quaternion[0], quaternion[1], quaternion[2], quaternion[3]])    
+    forward_vector = r.apply([1, 0, 0])    
+    forward_vector = forward_vector / np.linalg.norm(forward_vector)    
+    new_point = point + forward_vector * distance    
     return new_point
         
 
@@ -229,6 +230,8 @@ class GoalCalculator(Node):
     def LaneFollowToggleCallback(self, request, response):
         if request.toggle:
             if not self.running:
+                self.start = True
+                NodeGlobal.goals.clear()
                 NodeGlobal.log_info("Creating timer")
                 self.timer = self.create_timer(Config.config["controller_interval"], self.controller)
                 NodeGlobal.log_info("Timer created")
@@ -236,6 +239,8 @@ class GoalCalculator(Node):
         else:
             if self.running:
                 self.timer.cancel()
+                del self.timer
+                NodeGlobal.log_info("Destroyed timer")
             self.running = False
         response.success = True
         return response
@@ -276,9 +281,10 @@ class GoalCalculator(Node):
             #     NodeGlobal.log_info("Goal calculator is shutdown")
             #     return  
             NodeGlobal.log_info("Calculating goal pose")
-            start = time.time()      
+            start = time.time()
             goal_pose = self.get_goal_pose(robot_coords_grid)
             end = time.time()
+            NodeGlobal.log_info(str(NodeGlobal.goals))
             if goal_pose != False:
                 NodeGlobal.log_info(f"Goal pose calculated (Time taken:{end-start})")
                 self.publish_goal(goal_pose)
@@ -383,6 +389,7 @@ class GoalCalculator(Node):
                     max_h = candidate_goal.heuristic
 
         if len(candidate_goals) == 0:
+            NodeGlobal.log_info("No candidate goals found")
             return False
         
         goal = candidate_goals[max_h_i].coords
@@ -390,12 +397,11 @@ class GoalCalculator(Node):
         return goal_pose
 
     def publish_goal(self, goal_pose):
-        if self.running:
-            parsed_goal = Message.static_parse_message(goal_pose, PoseStamped)
-            Publisher.pubs["goal_pose"].publish(goal_pose)
-            if len(NodeGlobal.goals)<=1 or calculate_distance(NodeGlobal.goals[-1], parsed_goal)>Config.config["goal_logger_in_between_distance"]: 
-                NodeGlobal.goals.append(parsed_goal)
-            NodeGlobal.log_info(f"Published goal: {goal_pose}")
+        parsed_goal = Message.static_parse_message(goal_pose, PoseStamped)
+        Publisher.pubs["goal_pose"].publish(goal_pose)
+        if len(NodeGlobal.goals)<=1 or calculate_distance(NodeGlobal.goals[-1], parsed_goal)>Config.config["goal_logger_in_between_distance"]: 
+            NodeGlobal.goals.append(parsed_goal)
+        NodeGlobal.log_info(f"Published goal: {goal_pose}")
 
 
 def main(args = None):
