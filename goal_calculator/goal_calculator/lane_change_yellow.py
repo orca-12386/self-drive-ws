@@ -94,8 +94,8 @@ class LaneChange(Node):
         self.publish_status(self.lane_change_active)
 
     def goal_callback(self, goal_request):
-        self.get_logger().info(f"Received goal request: lane_change = {goal_request.lane_change}")
-        if goal_request.lane_change == 1:
+        self.get_logger().info(f"Received goal request: lane_change = {goal_request.data}")
+        if goal_request.data == 1:
             self.get_logger().info("Lane change action received")
             self.lane_change_active = True
             return GoalResponse.ACCEPT

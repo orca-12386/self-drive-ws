@@ -16,6 +16,9 @@ def generate_launch_description():
     world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_lights.world')
     robot_file = os.path.join(robo_desc_dir,'launch','robot.launch.py')
 
+    motion_planner_package = get_package_share_directory("planner_server_dwb")
+    motion_planner_launch_file = os.path.join(motion_planner_package, "launch", "planner.launch.py")
+
     SIM = True
 
     if SIM:
@@ -43,6 +46,12 @@ def generate_launch_description():
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(robot_file)
+        )
+    ]
+
+    launch_motion_control = [
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(motion_planner_launch_file),
         )
     ]
 
@@ -266,6 +275,8 @@ def generate_launch_description():
 
     launch_description.extend(launch_world_robot)
     
+    launch_description.extend(launch_motion_control)
+
     launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)
     launch_description.extend(interpolation)

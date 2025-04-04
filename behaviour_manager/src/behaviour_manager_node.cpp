@@ -301,9 +301,19 @@ private:
         change_planner_topic_srv_client = this->create_client<topic_remapper::srv::ChangeTopic>("change_topic");
         lane_follow_toggle_srv_client = this->create_client<interfaces::srv::LaneFollowToggle>("toggle_lane_follow");
 
+        lane_follow_toggle_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
+        change_planner_topic_request = std::make_shared<topic_remapper::srv::ChangeTopic::Request>();
+
         near_map_recv = false;
         far_map_recv = false;
         odometry_recv = false;
+        
+        /*
+        mode 0 : neither 
+        mode 1 : lane following
+        mode 2 : acting
+        */
+        mode = 0;
     }
 
     std::array<double, 3> get_odometry_location() {
@@ -359,43 +369,83 @@ private:
         return send_goal_options;
     }
 
+
+    void lane_follow_start() {
+        mode = 1;
+        lane_follow_toggle_request->toggle = true;            
+        call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, lane_follow_toggle_request);
+        log("Started lane follow");
+    }
+
+    void lane_follow_stop() {
+        mode = 0;
+        lane_follow_toggle_request->toggle = false;            
+        call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, lane_follow_toggle_request);
+        log("Stopped lane follow");
+    }
+
+    void change_motion_control_map(std::string s) {
+        change_planner_topic_request->new_topic = s;
+        call_service<topic_remapper::srv::ChangeTopic>(change_planner_topic_srv_client, change_planner_topic_request);
+        log(std::string("Changed planner map to ")+s);
+    }
+
+    void lane_change() {
+        mode = 2;
+        // change planner map to white
+        change_motion_control_map("/map/white/local");
+        //lane change
+        log("Changing lanes");
+        auto send_goal_options = create_send_goal_options();
+        auto goal_msg = create_goal_message(1);
+        lane_change_action_client->send_goal(goal_msg, send_goal_options);
+        lane_change_action_client->wait_for_result();
+        log("Changed lanes");
+        // change planner map back
+        change_motion_control_map("/map/current");
+        mode = 0;
+    }
+
+    void stop_movement() {
+        mode = 2;
+        auto send_goal_options = create_send_goal_options();
+        auto goal_msg = create_goal_message(1);
+        stop_action_client->send_goal(goal_msg, send_goal_options);
+        stop_action_client->wait_for_result();
+        mode = 0;
+    }
+
+
     void process_detections() {
         std::unordered_map<std::string, bool> is_detected;
         for(const auto & topic : detection_subs) {
             is_detected[topic.first] = topic.second->is_detected();
         }
-        auto lane_follow_toggle_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
-            
+        
         if(is_detected.at("stop_sign")) {
             log("Stop sign detected");
-
-            lane_follow_toggle_request->toggle = false;            
-            call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, lane_follow_toggle_request);
-            
-            auto send_goal_options = create_send_goal_options();
-            auto goal_msg = create_goal_message(1);
-            stop_action_client->send_goal(goal_msg, send_goal_options);
-            stop_action_client->wait_for_result();
-            RCLCPP_INFO(this->get_logger(), "Received response");
-
-            lane_follow_toggle_request->toggle = true;
-            call_service<interfaces::srv::LaneFollowToggle>(lane_follow_toggle_srv_client, lane_follow_toggle_request);
+            // stop following
+            lane_follow_stop();
+            // stop
+            stop_movement();
         } else if(is_detected.at("tyre")) {
             log("Tyre detected");
             // stop following
-            // lane change
-            // wait for completion
+            lane_follow_stop();
+            // change planner map
+            lane_change();
         } else if(is_detected.at("traffic_drum")) {
             log("Traffic drum detected");
             // stop following
+            lane_follow_stop();
             // lane change
-            // wait for completion
+            lane_change();
         } else {
-            log("no detections");
-            // continue following
-        }
-        // obtain latest detections
-        
+            // lane follow
+            if(mode == 0) {
+                lane_follow_start();
+            }
+        }        
 /*     
 if(stop)
 automatic: stop keeping, set goal to current position. Wait for cmd vel to become 0 and then continue execution 
@@ -458,10 +508,15 @@ keep
     double odometry_yaw;
 
     std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client;
+
     rclcpp::Client<topic_remapper::srv::ChangeTopic>::SharedPtr change_planner_topic_srv_client;
     rclcpp::Client<interfaces::srv::LaneFollowToggle>::SharedPtr lane_follow_toggle_srv_client;
+    std::shared_ptr<interfaces::srv::LaneFollowToggle::Request> lane_follow_toggle_request;
+    std::shared_ptr<topic_remapper::srv::ChangeTopic::Request> change_planner_topic_request;
 
     rclcpp::CallbackGroup::SharedPtr timer_cb_group;
+
+    int mode;
 };
 
 

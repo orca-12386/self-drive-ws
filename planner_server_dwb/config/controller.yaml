@@ -380,6 +380,7 @@ local_costmap:
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
 
       static_layer:
+        map_topic: "/map/motion_control"
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: False
         enabled: true
