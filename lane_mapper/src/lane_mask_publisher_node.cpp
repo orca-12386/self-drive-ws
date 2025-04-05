@@ -42,8 +42,7 @@ public:
     yellow_mask_upper(210,255,255), 
     yellow_mask_lower(0,100,100),
     white_mask_upper(255,255,255),
-    white_mask_lower(230,230,230)
-    // white_mask_lower(250,250,250)
+    white_mask_lower(0,0,0)
     {
         RCLCPP_INFO(this->get_logger(), "lane_mask_publisher_node started");
 
@@ -195,13 +194,14 @@ private:
             return;
         } 
 
+        // log(rgb->encoding);
         if(!rgb->encoding.compare("bgra8")) {
             cv::cvtColor(rgb_image, rgb_image, cv::COLOR_BGRA2BGR);
             cv::cvtColor(rgb_image, rgb_image, cv::COLOR_BGR2RGB);
         }
 
         get_white_mask(rgb_image, white_mask);
-        erode_and_dilate(white_mask);
+        // erode_and_dilate(white_mask);
         publish_mask(white_mask, white_mask_pub);
 
         get_yellow_mask(rgb_image, yellow_mask);

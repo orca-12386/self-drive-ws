@@ -1,11 +1,14 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.actions import SetEnvironmentVariable
 from scripts import GazeboRosPaths
+from launch.actions import ExecuteProcess
+from launch.substitutions import LaunchConfiguration
+
 
 def generate_launch_description():
     package_share_dir = get_package_share_directory("self_drive_course")
@@ -19,7 +22,8 @@ def generate_launch_description():
     motion_planner_package = get_package_share_directory("planner_server_dwb")
     motion_planner_launch_file = os.path.join(motion_planner_package, "launch", "planner.launch.py")
 
-    SIM = True
+    SIM = False
+    MOVEMENT = False
 
     if SIM:
         depth_sub_topic = "/zed_node/stereocamera/depth/image_raw"
@@ -48,6 +52,61 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(robot_file)
         )
     ]
+
+    # Define arguments for the included launch files
+    sensor_hostname = "os-122220002210.local"
+    pointcloud_topic = LaunchConfiguration('pointcloud_topic')
+    imu_topic = LaunchConfiguration('imu_topic')
+
+    # Declare arguments with default values
+    declare_sensor_hostname = DeclareLaunchArgument(
+        'sensor_hostname', default_value='os-122220002210.local'
+    )
+    declare_pointcloud_topic = DeclareLaunchArgument(
+        'pointcloud_topic', default_value='/lidar/points'
+    )
+    declare_imu_topic = DeclareLaunchArgument(
+        'imu_topic', default_value='/lidar/imu'
+    )
+
+    zed_wrapper_dir = get_package_share_directory('zed_wrapper')
+
+    dlo_dir= get_package_share_directory('direct_lidar_odometry')
+
+    driver_launch = ExecuteProcess(
+        cmd=['ros2', 'launch', 'ouster_ros', 'sensor.launch.xml', f'sensor_hostname:={sensor_hostname}'],
+        output='screen'
+    )
+
+    dlo_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(dlo_dir, 'launch', 'dlo.launch.py')),
+        launch_arguments={
+            'rviz': 'false',
+            'pointcloud_topic': pointcloud_topic,
+            'imu_topic': imu_topic
+        }.items()
+    )
+
+    zed_no_tf_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
+        launch_arguments={
+            "camera_model": "zed2i"
+        }.items()
+    )
+
+    # transform_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(os.path.join(transformer_dir, 'launch', 'transform.launch.py'))
+    # )
+
+    launch_sensors = [
+        declare_sensor_hostname,
+        declare_pointcloud_topic,
+        declare_imu_topic,
+        driver_launch,
+        dlo_launch,
+        zed_no_tf_launch,
+        # transform_launch,
+   ]
 
     launch_motion_control = [
         IncludeLaunchDescription(
@@ -242,11 +301,20 @@ def generate_launch_description():
     launch_topic_remapper = [
         Node(
             package='topic_remapper',
-            executable='topic_remapper_node',
-            name='topic_remapper_node',
+            executable='motion_control_topic_remapper_node',
+            name='motion_control_topic_remapper_node',
             parameters=[{
                 'default_sub_topic': '/map/current',
                 'pub_topic': '/map/motion_control'
+            }]       
+        ),
+        Node(
+            package='topic_remapper',
+            executable='odom_topic_remapper_node',
+            name='odom_topic_remapper_node',
+            parameters=[{
+                'default_sub_topic': '/zed/zed_node/odom',
+                'pub_topic': '/odom'
             }]       
         ),
     ]
@@ -273,9 +341,14 @@ def generate_launch_description():
     
     launch_description = list()
 
-    launch_description.extend(launch_world_robot)
-    
-    launch_description.extend(launch_motion_control)
+    if SIM:
+        launch_description.extend(launch_world_robot)
+    else:
+        launch_description.extend(launch_sensors)
+
+
+    if MOVEMENT:
+        launch_description.extend(launch_motion_control)
 
     launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)

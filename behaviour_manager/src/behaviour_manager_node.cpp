@@ -337,7 +337,7 @@ private:
         this->stop_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopAction");
 
         // Services: Start/stop lane follow, change planner topic
-        this->change_planner_topic_srv_client = std::make_unique<ServiceClient<topic_remapper::srv::ChangeTopic>>(this, "change_topic");
+        this->change_planner_topic_srv_client = std::make_unique<ServiceClient<topic_remapper::srv::ChangeTopic>>(this, "/topic_remapper/motion_control");
         this->lane_follow_toggle_srv_client = std::make_unique<ServiceClient<interfaces::srv::LaneFollowToggle>>(this, "toggle_lane_follow");
 
         lane_follow_toggle_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();

@@ -1,3 +1,4 @@
+#pragma once
 // #define DEBUG
 
 #include <rclcpp/rclcpp.hpp>
@@ -17,8 +18,10 @@
 
 template<typename message_type>
 class TopicRemapperNode : public rclcpp::Node {
-public:
-    TopicRemapperNode() : rclcpp::Node("topic_remapper_node") {
+public: 
+    TopicRemapperNode(std::string service_name) : rclcpp::Node("topic_remapper_node") {
+        this->service_name = service_name;
+
         RCLCPP_INFO(this->get_logger(), "topic_remapper_node started");
 
         this->declare_parameter("default_sub_topic", rclcpp::PARAMETER_STRING);
@@ -47,7 +50,7 @@ private:
 
         sub = this->create_subscription<message_type>(default_sub_topic, 10, std::bind(&TopicRemapperNode::topic_callback, this, std::placeholders::_1));
         pub = this->create_publisher<message_type>(pub_topic, 10);
-        change_topic_service = this->create_service<topic_remapper::srv::ChangeTopic>("change_topic", std::bind(&TopicRemapperNode::change_topic, this, std::placeholders::_1, std::placeholders::_2));
+        change_topic_service = this->create_service<topic_remapper::srv::ChangeTopic>(this->service_name, std::bind(&TopicRemapperNode::change_topic, this, std::placeholders::_1, std::placeholders::_2));
     }
 
     void topic_callback(std::shared_ptr<message_type> msg) {
@@ -56,16 +59,8 @@ private:
 
     typename rclcpp::Subscription<message_type>::SharedPtr sub;
     typename rclcpp::Publisher<message_type>::SharedPtr pub;
+    std::string service_name;
     rclcpp::Service<topic_remapper::srv::ChangeTopic>::SharedPtr change_topic_service;
 
     rclcpp::TimerBase::SharedPtr timer;
 };
-
-
-int main(int argc, char** argv) {
-    rclcpp::init(argc, argv);
-    auto node = std::make_shared<TopicRemapperNode<nav_msgs::msg::OccupancyGrid>>();
-    rclcpp::spin(node);
-    rclcpp::shutdown();
-    return 0;
-}

@@ -27,19 +27,31 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
-add_executable(topic_remapper_node src/topic_remapper_node.cpp)
-ament_target_dependencies(topic_remapper_node
+include_directories(include)
+
+add_executable(motion_control_topic_remapper_node src/motion_control_topic_remapper_node.cpp)
+ament_target_dependencies(motion_control_topic_remapper_node
   rclcpp
   std_msgs
   nav_msgs
   geometry_msgs
 )
 
-target_link_libraries(topic_remapper_node "${cpp_typesupport_target}")
+add_executable(odom_topic_remapper_node src/odom_topic_remapper_node.cpp)
+ament_target_dependencies(odom_topic_remapper_node
+  rclcpp
+  std_msgs
+  nav_msgs
+  geometry_msgs
+)
+
+target_link_libraries(motion_control_topic_remapper_node "${cpp_typesupport_target}")
+target_link_libraries(odom_topic_remapper_node "${cpp_typesupport_target}")
 
 # Install the executable
 install(TARGETS
-  topic_remapper_node
+  motion_control_topic_remapper_node
+  odom_topic_remapper_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
