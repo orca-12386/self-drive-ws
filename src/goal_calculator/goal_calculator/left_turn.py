@@ -11,7 +11,7 @@ from sklearn.cluster import DBSCAN
 import math
 from collections import deque
 from scipy.spatial.distance import cdist
-from interfaces.action import LeftTurn
+from interfaces.action import GoalAction as LeftTurn
 import asyncio
 
 class LeftTurnNode(Node):

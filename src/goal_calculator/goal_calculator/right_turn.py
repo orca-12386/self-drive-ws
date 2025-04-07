@@ -8,7 +8,7 @@ import numpy as np
 import tf_transformations
 from collections import deque
 import math
-from interfaces.action import RightTurn
+from interfaces.action import GoalAction as RightTurn
 import asyncio
 
 class RightTurnNode(Node):
