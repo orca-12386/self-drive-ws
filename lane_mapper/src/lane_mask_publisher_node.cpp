@@ -41,11 +41,11 @@ public:
     rclcpp::Node("lane_mask_publisher_node"), 
     yellow_mask_upper(210,255,255), 
     yellow_mask_lower(0,100,100),
-    white_mask_upper(255,255,255),
-    white_mask_lower(0,0,0)
+    white_mask_upper(255,255,255)
     {
         RCLCPP_INFO(this->get_logger(), "lane_mask_publisher_node started");
 
+        this->declare_parameter("sim", rclcpp::PARAMETER_BOOL);
         this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
         this->declare_parameter("color_sub_topic", rclcpp::PARAMETER_STRING);
 
@@ -77,8 +77,14 @@ private:
     void initialise_data() {
         std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
         std::string color_sub_topic = this->get_parameter("color_sub_topic").as_string();
+        sim = this->get_parameter("sim").as_bool();
         log(color_sub_topic);
         log(depth_sub_topic);
+        if(sim) {
+            white_mask_lower = cv::Scalar(230,230,230);
+        } else {
+            white_mask_lower = cv::Scalar(200,200,200);
+        }
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
             color_sub_topic, 10, std::bind(&LaneMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
@@ -182,7 +188,8 @@ private:
         mask_pub->publish(*mask_msg);
     }
 
-    void create_and_publish_mask(sensor_msgs::msg::Image::SharedPtr rgb, sensor_msgs::msg::Image::SharedPtr depth) {    
+    void create_and_publish_mask(sensor_msgs::msg::Image::SharedPtr rgb, sensor_msgs::msg::Image::SharedPtr depth) { 
+
         Timer t = Timer("sensor msg to cv mat");
         rgb_image_ptr = cv_bridge::toCvCopy(rgb, rgb->encoding);
         rgb_image = rgb_image_ptr->image;
@@ -218,6 +225,7 @@ private:
         }
     }
 
+    bool sim;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_sub, depth_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lane_change_status_sub;
     bool rgb_recv;

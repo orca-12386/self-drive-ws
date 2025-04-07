@@ -88,6 +88,7 @@ public:
 
         // Initialise publishers
         map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>(map_pub_topic, 10);
+        instant_map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>(map_pub_topic+std::string("/instant"), 10);
 
         // Initialise map
         grid_resolution = RESOLUTION;
@@ -329,6 +330,9 @@ private:
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
                 instant_map_msg->data[index] = 100;
                 log_odds_map[index] += log_odds_hit-log_odds_miss;
+                if(abs(log_odds_map[index]) > 100000) {
+                    log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*100000;
+                }
             } else {
                 log("Assignment exceeds map dimensions");
             }
@@ -357,6 +361,7 @@ private:
         //log_debug("Created map msg");
 
         //publish map
+        instant_map_pub->publish(*instant_map_msg);
         map_pub->publish(*full_map_msg);
 
         log_debug(t7.log());
@@ -388,6 +393,8 @@ private:
 
     // Publishers
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
+    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr instant_map_pub;
+
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_pub;
 
     // Data containers

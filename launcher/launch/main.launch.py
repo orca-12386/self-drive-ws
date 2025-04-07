@@ -8,6 +8,7 @@ from launch.actions import SetEnvironmentVariable
 from scripts import GazeboRosPaths
 from launch.actions import ExecuteProcess
 from launch.substitutions import LaunchConfiguration
+import yaml
 
 
 def generate_launch_description():
@@ -22,8 +23,16 @@ def generate_launch_description():
     motion_planner_package = get_package_share_directory("planner_server_dwb")
     motion_planner_launch_file = os.path.join(motion_planner_package, "launch", "planner.launch.py")
 
-    SIM = False
-    MOVEMENT = False
+    config_launcher_path = os.path.join(get_package_share_directory("launcher"), "config", "config.yaml")
+
+    with open(config_launcher_path) as stream:
+        try:
+            config = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    
+    SIM = config['sim']
+    MOVEMENT = config['movement']
 
     if SIM:
         depth_sub_topic = "/zed_node/stereocamera/depth/image_raw"
@@ -34,79 +43,80 @@ def generate_launch_description():
         color_sub_topic = "/zed/zed_node/rgb/image_rect_color"
         camera_info_sub_topic = "/zed/zed_node/rgb/camera_info"
 
-    launch_world_robot = [
-        SetEnvironmentVariable(
-            'GAZEBO_MODEL_PATH',
-            os.path.join(package_share_dir, 'models') + ':' + os.environ.get('GAZEBO_MODEL_PATH', '')
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(gazebo_launch_file),
-            launch_arguments={
-                'world': world_file,
-                'robot': robot_file,
-                'pause': 'false',
-                'reset': 'true'
-            }.items(),
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(robot_file)
+    if SIM:
+        launch_world_robot = [
+            SetEnvironmentVariable(
+                'GAZEBO_MODEL_PATH',
+                os.path.join(package_share_dir, 'models') + ':' + os.environ.get('GAZEBO_MODEL_PATH', '')
+            ),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(gazebo_launch_file),
+                launch_arguments={
+                    'world': world_file,
+                    'robot': robot_file,
+                    'pause': 'false',
+                    'reset': 'true'
+                }.items(),
+            ),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(robot_file)
+            )
+        ]
+    else:
+        # Define arguments for the included launch files
+        sensor_hostname = "os-122220002210.local"
+        pointcloud_topic = LaunchConfiguration('pointcloud_topic')
+        imu_topic = LaunchConfiguration('imu_topic')
+
+        # Declare arguments with default values
+        declare_sensor_hostname = DeclareLaunchArgument(
+            'sensor_hostname', default_value='os-122220002210.local'
         )
-    ]
+        declare_pointcloud_topic = DeclareLaunchArgument(
+            'pointcloud_topic', default_value='/lidar/points'
+        )
+        declare_imu_topic = DeclareLaunchArgument(
+            'imu_topic', default_value='/lidar/imu'
+        )
 
-    # Define arguments for the included launch files
-    sensor_hostname = "os-122220002210.local"
-    pointcloud_topic = LaunchConfiguration('pointcloud_topic')
-    imu_topic = LaunchConfiguration('imu_topic')
+        zed_wrapper_dir = get_package_share_directory('zed_wrapper')
 
-    # Declare arguments with default values
-    declare_sensor_hostname = DeclareLaunchArgument(
-        'sensor_hostname', default_value='os-122220002210.local'
-    )
-    declare_pointcloud_topic = DeclareLaunchArgument(
-        'pointcloud_topic', default_value='/lidar/points'
-    )
-    declare_imu_topic = DeclareLaunchArgument(
-        'imu_topic', default_value='/lidar/imu'
-    )
+        dlo_dir= get_package_share_directory('direct_lidar_odometry')
 
-    zed_wrapper_dir = get_package_share_directory('zed_wrapper')
+        driver_launch = ExecuteProcess(
+            cmd=['ros2', 'launch', 'ouster_ros', 'sensor.launch.xml', f'sensor_hostname:={sensor_hostname}'],
+            output='screen'
+        )
 
-    dlo_dir= get_package_share_directory('direct_lidar_odometry')
+        dlo_launch = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(dlo_dir, 'launch', 'dlo.launch.py')),
+            launch_arguments={
+                'rviz': 'false',
+                'pointcloud_topic': pointcloud_topic,
+                'imu_topic': imu_topic
+            }.items()
+        )
 
-    driver_launch = ExecuteProcess(
-        cmd=['ros2', 'launch', 'ouster_ros', 'sensor.launch.xml', f'sensor_hostname:={sensor_hostname}'],
-        output='screen'
-    )
+        zed_no_tf_launch = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
+            launch_arguments={
+                "camera_model": "zed2i"
+            }.items()
+        )
 
-    dlo_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(dlo_dir, 'launch', 'dlo.launch.py')),
-        launch_arguments={
-            'rviz': 'false',
-            'pointcloud_topic': pointcloud_topic,
-            'imu_topic': imu_topic
-        }.items()
-    )
+        # transform_launch = IncludeLaunchDescription(
+        #     PythonLaunchDescriptionSource(os.path.join(transformer_dir, 'launch', 'transform.launch.py'))
+        # )
 
-    zed_no_tf_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
-        launch_arguments={
-            "camera_model": "zed2i"
-        }.items()
-    )
-
-    # transform_launch = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource(os.path.join(transformer_dir, 'launch', 'transform.launch.py'))
-    # )
-
-    launch_sensors = [
-        declare_sensor_hostname,
-        declare_pointcloud_topic,
-        declare_imu_topic,
-        driver_launch,
-        dlo_launch,
-        zed_no_tf_launch,
-        # transform_launch,
-   ]
+        launch_sensors = [
+            declare_sensor_hostname,
+            declare_pointcloud_topic,
+            declare_imu_topic,
+            driver_launch,
+            dlo_launch,
+            zed_no_tf_launch,
+            # transform_launch,
+        ]
 
     launch_motion_control = [
         IncludeLaunchDescription(
@@ -120,6 +130,7 @@ def generate_launch_description():
             executable='lane_mask_publisher_node',
             name='lane_mask_publisher_node',
             parameters=[{
+                'sim': SIM,
                 'depth_sub_topic': depth_sub_topic,
                 'color_sub_topic': color_sub_topic,
             }]
