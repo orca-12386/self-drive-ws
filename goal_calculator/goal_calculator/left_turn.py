@@ -1,5 +1,7 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionServer, GoalResponse
+from rclpy.executors import MultiThreadedExecutor
 from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PoseStamped, PointStamped
 import os
@@ -8,8 +10,9 @@ import tf_transformations
 from sklearn.cluster import DBSCAN
 import math
 from collections import deque
-import matplotlib.pyplot as plt
 from scipy.spatial.distance import cdist
+from interfaces.action import LeftTurn
+import asyncio
 
 class LeftTurnNode(Node):
     def __init__(self):
@@ -17,9 +20,9 @@ class LeftTurnNode(Node):
         self.map_subscription = self.create_subscription(OccupancyGrid, '/map/yellow/local', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
-
-        self.timer = self.create_timer(0.1, self.publish_goal)
-
+        self.action_server = ActionServer(self, LeftTurn, 'LeftTurn', execute_callback=self.execute_callback)
+        # self.create_timer(0.1, self.publish_goal)
+        
         self.Midpoint = None
         self.closest_yellow_lane = None
         self.final_goal = None
@@ -36,6 +39,8 @@ class LeftTurnNode(Node):
         self.bot_orientation = None
         self.goal_pose = None
 
+        self.get_logger().info("Left Turn Server Started")
+
     def map_callback(self, msg):
             self.map_data = np.array(msg.data).reshape((msg.info.height, msg.info.width))
             self.map_width = msg.info.width
@@ -43,8 +48,8 @@ class LeftTurnNode(Node):
             self.map_resolution = msg.info.resolution
             self.map_origin = msg.info.origin
 
-            if self.map_data is not None and self.bot_position is not None and self.final_goal is None:
-                self.calculate_goal()
+            # if self.map_data is not None and self.bot_position is not None and self.final_goal is None:
+            #     self.calculate_goal()
 
     def odom_callback(self, msg):   
             self.bot_position = msg.pose.pose.position
@@ -121,7 +126,34 @@ class LeftTurnNode(Node):
         cluster_distances.sort(key=lambda x: x[1])
 
         lane1_cluster_label = cluster_distances[0][0]
-        lane2_cluster_label = cluster_distances[1][0]
+        lane2_cluster_label = None
+        
+        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        for cluster in cluster_distances:
+            if cluster == cluster_distances[0]:
+                continue
+            cluster_label = cluster[0]
+            cluster_points = yellow_lane_points[labels == cluster_label]
+            cluster_center = np.mean(cluster_points, axis=0)
+
+            cluster_center_x = cluster_center[1]
+            cluster_center_y = cluster_center[0]
+
+            invalid_cluster = False
+
+            if math.pi / 4 <= bot_yaw <= 3 * math.pi / 4:  
+                invalid_cluster = cluster_center_y < closest_lane_y
+            elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:  
+                invalid_cluster = cluster_center_y > closest_lane_y
+            elif (-math.pi <= bot_yaw -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):  
+                invalid_cluster = cluster_center_x > closest_lane_x
+            elif -math.pi / 4 < bot_yaw < math.pi / 4:  
+                invalid_cluster = cluster_center_x < closest_lane_x
+
+            if invalid_cluster:
+                continue
+            lane2_cluster_label = cluster_label
+            break
 
         lane1_cluster = yellow_lane_points[labels == lane1_cluster_label]
         lane2_cluster = yellow_lane_points[labels == lane2_cluster_label]
@@ -179,83 +211,80 @@ class LeftTurnNode(Node):
         if self.bot_position is None or self.map_data is None:
             return
 
-        self.find_intersection_midpoint()
-
-        dist = math.sqrt((self.bot_position.x - self.Midpoint.pose.position.x)**2 + (self.bot_position.y - self.Midpoint.pose.position.y)**2)
-
-        if dist > 1:
-            self.get_logger().info("Moving to Midpoint")
+        if self.Midpoint is None:
+            self.get_logger().info("Calculating Midpoint")
+            self.find_intersection_midpoint()
             return
 
-        self.get_logger().info("Midpoint Reached")
-        self.get_logger().info("Calculating Final Goal")
+        if self.final_goal is None and self.Midpoint is not None:
+            self.get_logger().info("Calculating Final Goal")
 
-        directions = [(1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0)]
+            directions = [(1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0)]
 
-        start_x, start_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
-        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+            start_x, start_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
+            bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
 
-        queue = deque([(start_x, start_y)])
-        visited = {(start_x, start_y)}
+            queue = deque([(start_x, start_y)])
+            visited = {(start_x, start_y)}
 
-        next_lane_point_x = 0
-        next_lane_point_y = 0
+            next_lane_point_x = 0
+            next_lane_point_y = 0
 
-        while queue:
-            x, y = queue.popleft()
-            bot_position_x, bot_position_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
+            while queue:
+                x, y = queue.popleft()
+                bot_position_x, bot_position_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
 
-            if self.map_data[y, x] > 0:
-                is_right = False
+                if self.map_data[y, x] > 0:
+                    is_right = False
 
-                if math.pi / 4 <= self.perpendicular_direction <= 3 * math.pi / 4:  
-                    is_right = x < bot_position_x - 10
-                elif -3 * math.pi / 4 <= self.perpendicular_direction <= -math.pi / 4:  
-                    is_right = x > bot_position_x + 10
-                elif (-math.pi <= self.perpendicular_direction < -3 * math.pi / 4) or (3 * math.pi / 4 < self.perpendicular_direction <= math.pi):  
-                    is_right = y < bot_position_y - 10
-                elif -math.pi / 4 < self.perpendicular_direction < math.pi / 4:  
-                    is_right = y > bot_position_y + 10
+                    if math.pi / 4 <= self.perpendicular_direction <= 3 * math.pi / 4:  
+                        is_right = x < bot_position_x - 10
+                    elif -3 * math.pi / 4 <= self.perpendicular_direction <= -math.pi / 4:  
+                        is_right = x > bot_position_x + 10
+                    elif (-math.pi <= self.perpendicular_direction < -3 * math.pi / 4) or (3 * math.pi / 4 < self.perpendicular_direction <= math.pi):  
+                        is_right = y < bot_position_y - 10
+                    elif -math.pi / 4 < self.perpendicular_direction < math.pi / 4:  
+                        is_right = y > bot_position_y + 10
 
-                if is_right:
-                    next_lane_point_x, next_lane_point_y = x, y
-                    break
+                    if is_right:
+                        next_lane_point_x, next_lane_point_y = x, y
+                        break
 
-            for dx, dy in directions:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.map_width and 0 <= ny < self.map_height and (nx, ny) not in visited:
-                    queue.append((nx, ny))
-                    visited.add((nx, ny))
+                for dx, dy in directions:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < self.map_width and 0 <= ny < self.map_height and (nx, ny) not in visited:
+                        queue.append((nx, ny))
+                        visited.add((nx, ny))
 
-        if 0 <= next_lane_point_x < self.map_width and 0 <= next_lane_point_y < self.map_height:
+            if 0 <= next_lane_point_x < self.map_width and 0 <= next_lane_point_y < self.map_height:
 
-            perpendicular_direction_x = math.cos(self.perpendicular_direction)
-            perpendicular_direction_y = math.sin(self.perpendicular_direction)
+                perpendicular_direction_x = math.cos(self.perpendicular_direction)
+                perpendicular_direction_y = math.sin(self.perpendicular_direction)
 
-            offset_x = self.lane_offset * perpendicular_direction_x
-            offset_y = self.lane_offset * perpendicular_direction_y
+                offset_x = self.lane_offset * perpendicular_direction_x
+                offset_y = self.lane_offset * perpendicular_direction_y
 
-            goal_x = next_lane_point_x + offset_x
-            goal_y = next_lane_point_y + offset_y
+                goal_x = next_lane_point_x + offset_x
+                goal_y = next_lane_point_y + offset_y
 
-            goal_x_world, goal_y_world = self.map_to_world(goal_x, goal_y)
+                goal_x_world, goal_y_world = self.map_to_world(goal_x, goal_y)
 
-            self.final_goal = PoseStamped()
-            self.final_goal.header.frame_id = 'map'
-            self.final_goal.header.stamp = self.get_clock().now().to_msg()
-            self.final_goal.pose.position.x = goal_x_world
-            self.final_goal.pose.position.y = goal_y_world
-            self.final_goal.pose.position.z = 0.0
+                self.final_goal = PoseStamped()
+                self.final_goal.header.frame_id = 'map'
+                self.final_goal.header.stamp = self.get_clock().now().to_msg()
+                self.final_goal.pose.position.x = goal_x_world
+                self.final_goal.pose.position.y = goal_y_world
+                self.final_goal.pose.position.z = 0.0
 
-            quaternion = tf_transformations.quaternion_from_euler(0, 0, self.perpendicular_direction + math.pi / 2)
-            self.final_goal.pose.orientation.x = quaternion[0]
-            self.final_goal.pose.orientation.y = quaternion[1]
-            self.final_goal.pose.orientation.z = quaternion[2]
-            self.final_goal.pose.orientation.w = quaternion[3]
+                quaternion = tf_transformations.quaternion_from_euler(0, 0, self.perpendicular_direction + math.pi / 2)
+                self.final_goal.pose.orientation.x = quaternion[0]
+                self.final_goal.pose.orientation.y = quaternion[1]
+                self.final_goal.pose.orientation.z = quaternion[2]
+                self.final_goal.pose.orientation.w = quaternion[3]
 
-            self.get_logger().info(f"Final Goal: ({self.final_goal.pose.position.x}, {self.final_goal.pose.position.y})")
-        else:
-            self.get_logger().info(f"Calculated goal is outside the map boundaries")
+                self.get_logger().info(f"Final Goal: ({self.final_goal.pose.position.x}, {self.final_goal.pose.position.y})")
+            else:
+                self.get_logger().info(f"Calculated goal is outside the map boundaries")
 
     def publish_goal(self):
             if self.Midpoint is not None and self.final_goal is None:
@@ -267,11 +296,61 @@ class LeftTurnNode(Node):
                 self.final_goal.header.stamp = self.get_clock().now().to_msg()
                 self.goal_publisher.publish(self.final_goal)
                 self.get_logger().info("Final Goal Published")
+
+    def goal_reached(self, goal):
+        if goal is None:
+            return False
+        distance = math.sqrt((goal.pose.position.x - self.bot_position.x)**2 + (goal.pose.position.y - self.bot_position.y)**2)
+        return distance < 0.2
+
+    async def execute_callback(self, goal_handle):
+        self.get_logger().info("Executing Left Turn")
+        try:
+            self.calculate_goal()
+            if self.final_goal is None and self.Midpoint is None:
+                self.get_logger().info("Could Not Calculate Goal")
+                goal_handle.abort()
+                return LeftTurn.Result()
+
+            if self.Midpoint is not None and self.final_goal is None:
+                self.publish_goal()
+                while rclpy.ok():
+                    if self.goal_reached(self.Midpoint):
+                        self.get_logger().info("Midpoint Reached")
+                        break
+                    self.publish_goal()
+                    asyncio.sleep(0.1)
+
+            self.calculate_goal()
+            self.publish_goal()
+
+            while rclpy.ok():
+                if self.goal_reached(self.final_goal):
+                    self.get_logger().info("Goal Reached")
+                    goal_handle.succeed()
+                    result = LeftTurn.Result()
+                    result.success = True
+                    return result
+                self.publish_goal()
+                asyncio.sleep(0.1)
+
+        except Exception as e:
+            self.get_logger().error(f"Error: {e}")
+            goal_handle.abort()
+            return LeftTurn.Result()       
                 
 def main(args=None):
 
     rclpy.init(args=args)
     left_turn_node = LeftTurnNode()
-    rclpy.spin(left_turn_node)
-    left_turn_node.destroy_node()
-    rclpy.shutdown()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(left_turn_node)
+
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        self.get_logger().info("Keyboard Interrupt")
+    finally:
+        executor.shutdown()
+        left_turn_node.destroy_node()
+        rclpy.shutdown()

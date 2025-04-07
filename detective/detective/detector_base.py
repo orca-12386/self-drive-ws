@@ -14,6 +14,33 @@ import time
 
 
 class BaseDetector(Node):
+    def __init__(self, node_name, detector_topic):
+        super.__init__(node_name)
+
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('input_image_topic', '/zed_node/stereocamera/image_raw'),
+                ('depth_image_topic', '/zed_node/stereocamera/depth/image_raw'),
+                ('camera_info_topic', '/zed_node/stereocamera/camera_info'),
+                ('output_image_topic', detector_topic+'/image'),
+                ('output_point_topic', detector_topic+'/coordinates'),
+                ('confidence_threshold', 0.5),
+            ]
+        )
+
+        # Initialize ROS components
+        self.bridge = CvBridge()
+        self.latest_image = None
+        self.latest_depth_image = None
+        self.camera_info = None
+        self.object_coords = None
+
+        # Setup communication
+        self._setup_communication()
+
+        self.get_logger().info(f"{node_name} initialized successfully.")
+
     def __init__(self, node_name, detector_topic, model_path):
         super().__init__(node_name)
         
