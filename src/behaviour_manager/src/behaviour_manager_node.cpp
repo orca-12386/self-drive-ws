@@ -10,6 +10,7 @@
 #include <interfaces/action/goal_action.hpp>
 #include <interfaces/srv/lane_follow_toggle.hpp>
 #include <topic_remapper/srv/change_topic.hpp>
+#include <intersection_detector/srv/detect_intersection.hpp>
 
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
@@ -172,6 +173,7 @@ public:
         this->client_ = rclcpp_action::create_client<interface_type>(node, action_topic, client_cb_group);
         this->node = node;
         result_recv = false;
+        this->action_topic = action_topic;
     }
 
     void send_goal(typename interface_type::Goal& goal_msg, typename rclcpp_action::Client<interface_type>::SendGoalOptions& send_goal_options) {
@@ -217,6 +219,7 @@ private:
 
     void result_callback(const typename action_goal_handle::WrappedResult & result) {
         result_recv = true;
+        RCLCPP_INFO(node->get_logger(), (std::string("Goal action function: ") + std::string(action_topic)).c_str());
         switch (result.code) {
             case rclcpp_action::ResultCode::SUCCEEDED:
                 RCLCPP_INFO(node->get_logger(), "Goal action succeeded");
@@ -237,6 +240,7 @@ private:
     rclcpp::Node* node;
     typename rclcpp_action::Client<interface_type>::SharedPtr client_;
     rclcpp::CallbackGroup::SharedPtr client_cb_group;
+    std::string action_topic;
 };
 
 
@@ -253,6 +257,7 @@ public:
     }
 
     void call(std::shared_ptr<typename interface_type::Request> request) {
+        RCLCPP_INFO(node->get_logger(), (std::string("Service call function: ") + std::string(service_topic)).c_str());
         while (!client->wait_for_service(std::chrono::milliseconds(1000))) {
             if (!rclcpp::ok()) {
             RCLCPP_ERROR(node->get_logger(), "Interrupted while waiting for the service. Exiting.");
@@ -268,6 +273,10 @@ public:
         RCLCPP_INFO(node->get_logger(), (std::string("Waiting for service ") + std::string(service_topic)).c_str());
         result.wait();
         RCLCPP_INFO(node->get_logger(), (std::string("Service call to ") + std::string(service_topic) + std::string("completed")).c_str());
+    }
+
+    shared_future get_result() {
+        return result;
     }
 
 private:
@@ -335,13 +344,19 @@ private:
         // Actions: Lane change, left turn, right turn
         this->lane_change_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "lane_change");
         this->stop_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopAction");
+        this->left_turn_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "LeftTurn");
+        this->right_turn_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "RightTurn");
 
         // Services: Start/stop lane follow, change planner topic
         this->change_planner_topic_srv_client = std::make_unique<ServiceClient<topic_remapper::srv::ChangeTopic>>(this, "/topic_remapper/motion_control");
         this->lane_follow_toggle_srv_client = std::make_unique<ServiceClient<interfaces::srv::LaneFollowToggle>>(this, "toggle_lane_follow");
+        this->detect_intersection_srv_client = std::make_unique<ServiceClient<intersection_detector::srv::DetectIntersection>>(this, "/detection/intersection");
+
 
         lane_follow_toggle_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
         change_planner_topic_request = std::make_shared<topic_remapper::srv::ChangeTopic::Request>();
+        detect_intersection_request = std::make_shared<intersection_detector::srv::DetectIntersection::Request>();
+
 
         near_map_recv = false;
         far_map_recv = false;
@@ -353,6 +368,11 @@ private:
         mode 2 : acting
         */
         mode = 0;
+        // straight: 0
+        // left: 2
+        // right: 1
+        turn_sequence = {1,1,0,2};
+        int current_turn_index = 0;
     }
 
     std::array<double, 3> get_odometry_location() {
@@ -437,6 +457,39 @@ private:
         mode = 0;
     }
 
+    bool detect_intersection() {
+        detect_intersection_srv_client->call(detect_intersection_request);
+        detect_intersection_srv_client->wait_for_result();
+        auto result = detect_intersection_srv_client->get_result();
+        bool detected = result.get()->is_intersection;
+        return detected;
+    }
+
+    void left_turn() {
+        mode = 2;
+        change_motion_control_map("/map");
+        log("Turning left");
+        auto send_goal_options = create_send_goal_options();
+        auto goal_msg = create_goal_message(1);
+        left_turn_action_client->send_goal(goal_msg, send_goal_options);
+        left_turn_action_client->wait_for_result();
+        log("Turned left");
+        change_motion_control_map("/map/current");
+        mode = 0;
+    }
+
+    void right_turn() {
+        mode = 2;
+        change_motion_control_map("/map");
+        log("Turning right");
+        auto send_goal_options = create_send_goal_options();
+        auto goal_msg = create_goal_message(1);
+        right_turn_action_client->send_goal(goal_msg, send_goal_options);
+        right_turn_action_client->wait_for_result();
+        log("Turned right");
+        change_motion_control_map("/map/current");
+        mode = 0;
+    }
 
     void process_detections() {
         std::unordered_map<std::string, bool> is_detected;
@@ -450,6 +503,19 @@ private:
             lane_follow_stop();
             // stop
             stop_movement();
+            if(detect_intersection()) {
+                switch(turn_sequence[current_turn_index]) {
+                    case 0:
+                        break;
+                    case 1:
+                        right_turn();
+                        break;
+                    case 2:
+                        left_turn();
+                        break;
+                }
+                current_turn_index++;
+            }
         } else if(is_detected.at("tyre")) {
             log("Tyre detected");
             // stop following
@@ -528,17 +594,22 @@ keep
     std::array<double, 3> odometry_location_arr;
     double odometry_yaw;
 
-    std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client;
+    std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client, left_turn_action_client, right_turn_action_client;
 
     std::unique_ptr<ServiceClient<interfaces::srv::LaneFollowToggle>> lane_follow_toggle_srv_client;
     std::unique_ptr<ServiceClient<topic_remapper::srv::ChangeTopic>> change_planner_topic_srv_client;
+    std::unique_ptr<ServiceClient<intersection_detector::srv::DetectIntersection>> detect_intersection_srv_client;
 
     std::shared_ptr<interfaces::srv::LaneFollowToggle::Request> lane_follow_toggle_request;
     std::shared_ptr<topic_remapper::srv::ChangeTopic::Request> change_planner_topic_request;
+    std::shared_ptr<intersection_detector::srv::DetectIntersection::Request> detect_intersection_request;
 
     rclcpp::CallbackGroup::SharedPtr timer_cb_group;
 
     int mode;
+    
+    int current_turn_index;
+    std::array<int, 4> turn_sequence;
 };
 
 

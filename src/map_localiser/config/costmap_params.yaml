@@ -1,6 +1,6 @@
 # config/costmap_params.yaml
 local_costmap:
-  width: 30.0  # meters
-  height: 30.0  # meters
+  width: 15.0  # meters
+  height: 15.0  # meters
   resolution: 0.08  # meters/cell
   update_frequency: 10.0  # Hz

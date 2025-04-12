@@ -42,7 +42,8 @@ ament_target_dependencies(
   nav_msgs
   visualization_msgs
   tf2
-  tf2_ros)
+  tf2_ros
+)
 
 target_link_libraries(intersection_detector_node "${cpp_typesupport_target}")
 

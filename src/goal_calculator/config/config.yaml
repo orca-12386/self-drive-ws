@@ -11,7 +11,7 @@ start_goal_distance: 3
 resume_goal_distance: 5
 
 goal_angle_threshold: 100
-goal_distance_max: 14
+goal_distance_max: 6
 goal_distance_min: 1.5
 goal_logger_in_between_distance: 2
 

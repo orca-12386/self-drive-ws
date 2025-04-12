@@ -6,13 +6,21 @@ from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PoseStamped, PointStamped
 import os
 import numpy as np
-import tf_transformations
 from sklearn.cluster import DBSCAN
 import math
 from collections import deque
 from scipy.spatial.distance import cdist
 from interfaces.action import GoalAction as LeftTurn
 import asyncio
+from scipy.spatial.transform import Rotation
+
+
+def euler_to_quat(euler):
+    return Rotation.from_euler('xyz', euler).as_quat()
+
+def quat_to_euler(quat):
+    return Rotation.from_quat(quat).as_euler('xyz') 
+     
 
 class LeftTurnNode(Node):
     def __init__(self):
@@ -66,7 +74,7 @@ class LeftTurnNode(Node):
             return world_x, world_y
         
     def get_yaw_from_quaternion(self, quat):
-            euler = tf_transformations.euler_from_quaternion([quat.x, quat.y, quat.z, quat.w])
+            euler = quat_to_euler([quat.x, quat.y, quat.z, quat.w])
             return euler[2]
 
 
@@ -194,7 +202,7 @@ class LeftTurnNode(Node):
         self.Midpoint.pose.position.y = mid_y_world
         self.Midpoint.pose.position.z = 0.0
 
-        quaternion = tf_transformations.quaternion_from_euler(0, 0, goal_yaw)
+        quaternion = euler_to_quat([0, 0, goal_yaw])
         self.Midpoint.pose.orientation.x = quaternion[0]
         self.Midpoint.pose.orientation.y = quaternion[1]
         self.Midpoint.pose.orientation.z = quaternion[2]
@@ -276,7 +284,7 @@ class LeftTurnNode(Node):
                 self.final_goal.pose.position.y = goal_y_world
                 self.final_goal.pose.position.z = 0.0
 
-                quaternion = tf_transformations.quaternion_from_euler(0, 0, self.perpendicular_direction + math.pi / 2)
+                quaternion = euler_to_quat([0, 0, self.perpendicular_direction + math.pi / 2])
                 self.final_goal.pose.orientation.x = quaternion[0]
                 self.final_goal.pose.orientation.y = quaternion[1]
                 self.final_goal.pose.orientation.z = quaternion[2]

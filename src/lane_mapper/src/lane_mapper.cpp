@@ -98,6 +98,7 @@ public:
         grid_origin_y = -(HEIGHT/2.0)*RESOLUTION;
 
         z_threshold = 20;
+        y_threshold = 1;
         
         prob_mark = 0.7;
         log_odds_mark = prob_to_log_odds(prob_mark);
@@ -263,7 +264,7 @@ private:
         for (const auto& pt : locations) {
             double depth = static_cast<double>(depth_image.at<float>(pt.y, pt.x)); // Access color pixel
             Point p = convert_depth_to_point(pt, depth, camera_info);
-            if(p.z<z_threshold) {
+            if(p.y < y_threshold && p.z<z_threshold) {
                 points.push_back(p);
             }
         }

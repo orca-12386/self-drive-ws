@@ -9,7 +9,6 @@ class StopServer(Node):
     def __init__(self):
         super().__init__('stop_server')
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.cmdvel_subscription = self.create_subscription(Twist, '/cmd_vel', self.cmdvel_callback, 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.action_server = ActionServer(self, StopAction, 'StopAction', execute_callback=self.execute_callback)
         self.get_logger().info("Stop Server Started")
@@ -17,13 +16,21 @@ class StopServer(Node):
         self.bot_orientation = None
         self.goal_pose = None
         self.current_cmd_vel = Twist()
+        self.prev_bot_position = None
+        self.odom_count = 0
 
     def odom_callback(self, msg):
+        if self.odom_count % 10:
+            self.odom_count = 0
+            self.prev_bot_position = self.bot_position
         self.bot_position = msg.pose.pose.position
         self.bot_orientation = msg.pose.pose.orientation
+        self.odom_count += 1
         
-    def cmdvel_callback(self, msg):
-        self.current_cmd_vel = msg
+    def check_movement(self):
+        if not (self.prev_bot_position is None):
+            return (self.prev_bot_position.x - self.bot_position.x) + (self.prev_bot_position.y - self.bot_position.y) + (self.prev_bot_position.z - self.bot_position.z) > 0.1
+        return False
 
     async def execute_callback(self, goal_handle):
         self.get_logger().info("Stop Action Received")
@@ -40,7 +47,7 @@ class StopServer(Node):
         rate = self.create_rate(2)  
 
         while True:
-            if self.current_cmd_vel.linear.x==0 and self.current_cmd_vel.angular.z == 0:
+            if not self.check_movement():
                 break
             
             self.goal_pose.pose.position = self.bot_position

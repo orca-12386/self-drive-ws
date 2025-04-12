@@ -17,7 +17,7 @@ def generate_launch_description():
     robo_desc_dir = get_package_share_directory("steve_description")
     gazebo_ros_package = get_package_share_directory('gazebo_ros')
     gazebo_launch_file = os.path.join(gazebo_ros_package, 'launch', 'gazebo.launch.py')
-    world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_lights.world')
+    world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_custom.world')
     robot_file = os.path.join(robo_desc_dir,'launch','robot.launch.py')
 
     motion_planner_package = get_package_share_directory("planner_server_dwb")
@@ -259,16 +259,27 @@ def generate_launch_description():
             package='goal_calculator',
             executable='stop_server',
             name='stop_server',
+        ),
+        # Turn
+        Node(
+            package='goal_calculator',
+            executable='right_turn',
+            name='right_turn'
+        ),
+        Node(
+            package='goal_calculator',
+            executable='left_turn',
+            name='left_turn'
         )
     ]
 
 
     launch_detector = [
-        Node(
-            package='detective',
-            executable='drum_detector_node',
-            name='drum_detector_node'
-        ),
+        # Node(
+        #     package='detective',
+        #     executable='drum_detector_node',
+        #     name='drum_detector_node'
+        # ),
         Node(
             package='detective',
             executable='pedestrian_detector_node',
@@ -278,7 +289,12 @@ def generate_launch_description():
             package='detective',
             executable='stop_sign_detector_node',
             name='stop_sign_detector_node'
-        ) 
+        ),
+        Node(
+            package='intersection_detector',
+            executable='intersection_detector_node',
+            name='intersection_detector_node'
+        )
     ]
 
 

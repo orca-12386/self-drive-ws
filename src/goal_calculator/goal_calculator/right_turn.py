@@ -5,18 +5,24 @@ from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PoseStamped, PointStamped
 from rclpy.executors import MultiThreadedExecutor
 import numpy as np
-import tf_transformations
 from collections import deque
 import math
 from interfaces.action import GoalAction as RightTurn
 import asyncio
+from scipy.spatial.transform import Rotation
+
+def euler_to_quat(euler):
+    return Rotation.from_euler('xyz', euler).as_quat()
+
+def quat_to_euler(quat):
+    return Rotation.from_quat(quat).as_euler('xyz') 
 
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
         self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.action_server = ActionServer(self, RightTurn, 'RightTurnAction', execute_callback=self.execute_callback)
+        self.action_server = ActionServer(self, RightTurn, 'RightTurn', execute_callback=self.execute_callback)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
 
         self.map_data = None
@@ -54,7 +60,7 @@ class RightTurnNode(Node):
         return world_x, world_y
 
     def get_yaw_from_quaternion(self, quat):
-        euler = tf_transformations.euler_from_quaternion([quat.x, quat.y, quat.z, quat.w])
+        euler = quat_to_euler([quat.x, quat.y, quat.z, quat.w])
         return euler[2]
 
     def find_right_lane_point(self):
@@ -180,7 +186,7 @@ class RightTurnNode(Node):
         self.goal_pose.pose.position.y = goal_y
         self.goal_pose.pose.position.z = 0.0
 
-        quaternion = tf_transformations.quaternion_from_euler(0, 0, goal_yaw)
+        quaternion = euler_to_quat([0, 0, goal_yaw])
         self.goal_pose.pose.orientation.x = quaternion[0]
         self.goal_pose.pose.orientation.y = quaternion[1]
         self.goal_pose.pose.orientation.z = quaternion[2]
