@@ -13,7 +13,7 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.50
+      xy_goal_tolerance: 0.250
       yaw_goal_tolerance: 0.50
     precise_goal_checker:
       stateful: True
@@ -21,147 +21,6 @@ controller_server:
       xy_goal_tolerance: 0.50
       yaw_goal_tolerance: 0.50
     
-    # my MPPI PARAMETERS
-    # FollowPath:
-    #   plugin: "nav2_mppi_controller::MPPIController"
-    #   time_steps: 56
-    #   model_dt: 0.5
-    #   batch_size: 1000
-    #   vx_std: 0.2
-    #   vy_std: 0.2
-    #   wz_std: 0.4
-    #   vx_max: 0.26
-    #   vx_min: -0.26
-    #   vy_max: 0.26
-    #   wz_max: 1.9
-    #   wz_min: -1.9
-    #   # ax_max: 3.0
-    #   # ax_min: -3.0
-    #   # ay_max: 3.0
-    #   # az_max: 3.5
-    #   iteration_count: 1
-    #   prune_distance: 1.7
-    #   transform_tolerance: 0.3
-    #   temperature: 0.3
-    #   gamma: 0.015
-    #   motion_model: "DiffDrive"
-    #   visualize: false
-    #   reset_period: 1.0
-    #   regenerate_noises: False
-
-    #   critics:
-    #     ConstraintCritic:
-    #       enabled: true
-    #       cost_power: 1
-    #       cost_weight: 4.0
-    #     GoalCritic:
-    #       enabled: true
-    #       cost_power: 1
-    #       cost_weight: 5.0
-    #       threshold_to_consider: 1.4
-    #     GoalAngleCritic:
-    #       enabled: true
-    #       cost_power: 1
-    #       cost_weight: 3.0
-    #       threshold_to_consider: 0.5
-    #     PreferForwardCritic:
-    #       enabled: true
-    #       cost_power: 1
-    #       cost_weight: 5.0
-    #       threshold_to_consider: 0.5
-    #     CostCritic:
-    #       enabled: true
-    #       cost_power: 1
-    #       cost_weight: 3.81
-    #       critical_cost: 300.0
-    #       consider_footprint: true
-    #       collision_cost: 1000000.0
-    #       near_goal_distance: 1.0
-    #       trajectory_point_step: 2
-    #     PathAlignCritic:
-    #       enabled: true
-    #       cost_power: 1
-    #       cost_weight: 14.0
-    #       max_path_occupancy_ratio: 0.05
-    #       trajectory_point_step: 4
-    #       threshold_to_consider: 0.5
-    #       offset_from_furthest: 20
-    #       use_path_orientations: false
-    #     PathFollowCritic:
-    #       enabled: true
-    #       cost_power: 1
-    #       cost_weight: 5.0
-    #       offset_from_furthest: 5
-    #       threshold_to_consider: 1.4
-    #     PathAngleCritic:
-    #       enabled: true
-    #       cost_power: 1
-    #       cost_weight: 2.0
-    #       offset_from_furthest: 4
-    #       threshold_to_consider: 0.5
-    #       max_angle_to_furthest: 1.0
-    #       mode: 0
-    #     TwirlingCritic:
-    #       enabled: true
-    #       twirling_cost_power: 1
-    #       twirling_cost_weight: 10.0
-
-    #   # # critics: ["ConstraintCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "PathAlignCritic"]
-    #   #   ConstraintCritic:
-    #   #     enabled: true
-    #   #     cost_power: 1
-    #   #     cost_weight: 2.0
-    #   #   GoalCritic:
-    #   #     enabled: true
-    #   #     cost_power: 4
-    #   #     cost_weight: 10.0
-    #   #     threshold_to_consider: 1.5
-    #   #   GoalAngleCritic:
-    #   #     enabled: true
-    #   #     cost_power: 4
-    #   #     cost_weight: 3.0
-    #   #     threshold_to_consider: 1.5
-    #   #   PreferForwardCritic:
-    #   #     enabled: true
-    #   #     cost_power: 1
-    #   #     cost_weight: 2.0
-    #   #     threshold_to_consider: 1.5
-    #   #   ObstaclesCritic:
-    #   #     enabled: true
-    #   #     cost_power: 1
-    #   #     repulsion_weight: 1.0
-    #   #     critical_weight: 20.0
-    #   #     consider_footprint: true
-    #   #     collision_cost: 10000.0
-    #   #     collision_margin_distance: 0.05
-    #   #     near_goal_distance: 0.5
-    #   #   PathAlignCritic:
-    #   #     enabled: true
-    #   #     cost_power: 1
-    #   #     cost_weight: 14.0
-    #   #     max_path_occupancy_ratio: 0.05
-    #   #     trajectory_point_step: 3
-    #   #     threshold_to_consider: 0.5
-    #   #     offset_from_furthest: 20
-    #   #     use_path_orientations: false
-    #   #   PathFollowCritic:
-    #   #     enabled: true
-    #   #     cost_power: 1
-    #   #     cost_weight: 5.0
-    #   #     offset_from_furthest: 5
-    #   #     threshold_to_consider: 1.4
-    #   #   PathAngleCritic:
-    #   #     enabled: true
-    #   #     cost_power: 1
-    #   #     cost_weight: 2.0
-    #   #     offset_from_furthest: 4
-    #   #     threshold_to_consider: 0.5
-    #   #     max_angle_to_furthest: 1.0
-    #   #     forward_preference: true
-    #   #   TwirlingCritic:
-    #   #     enabled: true
-    #   #     twirling_cost_power: 1
-    #   #     twirling_cost_weight: 10.0
 
     # my DWB parameters 
     FollowPath:
@@ -169,18 +28,18 @@ controller_server:
       debug_trajectory_details: True
       min_vel_x: 0.09
       min_vel_y: 0.01
-      max_vel_x: 1.0  
-      max_vel_y: 1.0
+      max_vel_x: 1.7
+      max_vel_y: 1.7
       max_vel_theta: 0.8
-      min_speed_xy: 0.3
-      max_speed_xy: 1.0
+      min_speed_xy: 1.0
+      max_speed_xy: 1.7
       min_speed_theta: 0.0
-      acc_lim_x: 0.8
-      acc_lim_y: 0.5
+      acc_lim_x: 1.8
+      acc_lim_y: 1.5
       acc_lim_theta: 0.80
       decel_lim_x: -2.5
       decel_lim_y: -2.5
-      decel_lim_theta: -1.0
+      decel_lim_theta: -5.0
       vx_samples: 60
       vy_samples: 40
       vtheta_samples: 30
@@ -198,7 +57,7 @@ controller_server:
       critics: ["RotateToGoal", "ObstacleFootprint", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       BaseObstacle:scale: 0.02
       PathAlign.scale: 50.0
-      PathAlign.forward_point_distance: 0.5
+      PathAlign.forward_point_distance: 0.9
       GoalAlign.scale: 5.0
       GoalAlign.forward_point_distance: 0.1
       PathDist.scale: 32.0
@@ -208,158 +67,6 @@ controller_server:
       RotateToGoal.lookahead_time: -1.0
       ObstacleFootprint.scale: 5.0
 
-
-# DWB parameters Online
-    # FollowPath:
-    #   plugin: "dwb_core::DWBLocalPlanner"
-    #   debug_trajectory_details: True
-    #   min_vel_x: -0.26
-    #   min_vel_y: -0.26
-    #   max_vel_x: 0.26
-    #   max_vel_y: 0.26
-    #   max_vel_theta: 2.0
-    #   min_speed_xy: 0.0
-    #   max_speed_xy: 0.26
-    #   min_speed_theta: 0.0
-    #   acc_lim_x: 0.5
-    #   acc_lim_y: 0.5
-    #   acc_lim_theta: 0.5
-    #   decel_lim_x: -0.5
-    #   decel_lim_y: -0.5
-    #   decel_lim_theta: -0.5
-    #   vx_samples: 20
-    #   vy_samples: 5
-    #   vtheta_samples: 20
-    #   sim_time: 1.7
-    #   linear_granularity: 0.05
-    #   angular_granularity: 0.025
-    #   transform_tolerance: 0.2
-    #   xy_goal_tolerance: 0.25
-    #   trans_stopped_velocity: 0.25
-    #   short_circuit_trajectory_evaluation: True
-    #   stateful: True
-    #   footprint: "[ [0.305, 0.298], [0.305, -0.298], [-0.305, -0.298], [-0.305, 0.298] ]"
-    #   critics: ["RotateToGoal", "Oscillation", "GoalAlign", "PathAlign", "PathDist", "GoalDist", "ObstacleFootprint"]
-    #   #BaseObstacle.scale: 0.02
-    #   PathAlign.scale: 32.0
-    #   PathAlign.forward_point_distance: 0.1
-    #   GoalAlign.scale: 24.0
-    #   GoalAlign.forward_point_distance: 0.1
-    #   PathDist.scale: 32.0
-    #   GoalDist.scale: 24.0
-    #   RotateToGoal.scale: 32.0
-    #   RotateToGoal.slowing_factor: 5.0
-    #   RotateToGoal.lookahead_time: -1.0
-
-
-###Online MPPI at ###
-# https://robotics.stackexchange.com/questions/107807/ros2-robot-wont-move-sideways-with-dwb-or-mppi-controllers
-#  controller_server:
-#   ros__parameters:
-#     use_sim_time: True
-#     controller_frequency: 10.0
-#     min_x_velocity_threshold: 0.001
-#     min_y_velocity_threshold: 0.5
-#     min_theta_velocity_threshold: 0.001
-#     failure_tolerance: 0.3
-#     progress_checker_plugin: "progress_checker"
-#     goal_checker_plugins: ["general_goal_checker"] # "precise_goal_checker"
-#     controller_plugins: ["FollowPath"]
-
-#     # Progress checker parameters
-#     progress_checker:
-#       plugin: "nav2_controller::SimpleProgressChecker"
-#       required_movement_radius: 0.5
-#       movement_time_allowance: 10.0
-#     general_goal_checker:
-#       stateful: True
-#       plugin: "nav2_controller::SimpleGoalChecker"
-#       xy_goal_tolerance: 0.25
-#       yaw_goal_tolerance: 0.25
-
-#     FollowPath:
-#       plugin: "nav2_mppi_controller::MPPIController"
-#       time_steps: 56
-#       model_dt: 0.1
-#       batch_size: 2000
-#       vx_std: 0.2
-#       vy_std: 0.2
-#       wz_std: 0.4
-#       vx_max: 0.26
-#       vx_min: -0.26
-#       vy_max: 0.26
-#       wz_max: 1.9
-#       wz_min: -1.9
-#       iteration_count: 1
-#       prune_distance: 1.7
-#       transform_tolerance: 0.1
-#       temperature: 0.3
-#       gamma: 0.015
-#       motion_model: "DiffDrive"
-#       visualize: true
-#       TrajectoryVisualizer:
-#         trajectory_step: 5
-#         time_step: 3
-#       critics: ["ConstraintCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "PathAlignCritic"]
-#       ConstraintCritic:
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 2.0
-#       GoalCritic:
-#         enabled: true
-#         cost_power: 4
-#         cost_weight: 10.0
-#         threshold_to_consider: 1.5
-#       GoalAngleCritic:
-#         enabled: true
-#         cost_power: 4
-#         cost_weight: 3.0
-#         threshold_to_consider: 1.5
-#       PreferForwardCritic:
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 2.0
-#         threshold_to_consider: 1.5
-#       ObstaclesCritic:
-#         enabled: true
-#         cost_power: 1
-#         repulsion_weight: 1.0
-#         critical_weight: 20.0
-#         consider_footprint: true
-#         collision_cost: 10000.0
-#         collision_margin_distance: 0.05
-#         near_goal_distance: 0.5
-#       PathAlignCritic:
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 14.0
-#         max_path_occupancy_ratio: 0.05
-#         trajectory_point_step: 3
-#         threshold_to_consider: 0.5
-#         offset_from_furthest: 20
-#         use_path_orientations: false
-#       PathFollowCritic:
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 5.0
-#         offset_from_furthest: 5
-#         threshold_to_consider: 1.4
-#       PathAngleCritic:
-#         enabled: true
-#         cost_power: 1
-#         cost_weight: 2.0
-#         offset_from_furthest: 4
-#         threshold_to_consider: 0.5
-#         max_angle_to_furthest: 1.0
-#         forward_preference: true
-#       TwirlingCritic:
-#         enabled: true
-#         twirling_cost_power: 1
-#         twirling_cost_weight: 10.0
-
-# controller_server_rclcpp_node:
-#   ros__parameters:
-#     use_sim_time: True
 
 local_costmap:
   local_costmap:
@@ -377,7 +84,8 @@ local_costmap:
       height: 10
       resolution: 0.06
       robot_radius: 0.35
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "inflation_layer"]
+      # plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
 
       static_layer:
         map_topic: "/map/motion_control"
@@ -386,83 +94,32 @@ local_costmap:
         enabled: true
         subscribe_to_updates: true
 
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: true
-        observation_sources: scan
-        pointcloud:
-          topic: /lidar/points
-          max_obstacle_height: 2.0
-          clearing: true
-          marking: true
-          data_type: "PointCloud2"
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5
-          obstacle_min_range: 0.4
-        scan:
-          topic: /lidar/scan
-          max_obstacle_height: 2.0
-          clearing: True
-          marking: True
-          data_type: "LaserScan"
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5
-          obstacle_min_range: 0.9
+      # obstacle_layer:
+      #   plugin: "nav2_costmap_2d::ObstacleLayer"
+      #   enabled: true
+      #   observation_sources: scan
+      #   pointcloud:
+      #     topic: /lidar/points
+      #     max_obstacle_height: 2.0
+      #     clearing: true
+      #     marking: true
+      #     data_type: "PointCloud2"
+      #     raytrace_max_range: 3.0
+      #     raytrace_min_range: 0.0
+      #     obstacle_max_range: 2.5
+      #     obstacle_min_range: 0.4
+      #   scan:
+      #     topic: /lidar/scan
+      #     max_obstacle_height: 2.0
+      #     clearing: True
+      #     marking: True
+      #     data_type: "LaserScan"
+      #     raytrace_max_range: 3.0
+      #     raytrace_min_range: 0.0
+      #     obstacle_max_range: 2.5
+      #     obstacle_min_range: 0.9
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 0.05
-        inflation_radius: 0.08
-
-# amcl:
-#   ros__parameters:
-#     use_sim_time: True
-#     alpha1: 0.02
-#     alpha2: 0.02
-#     alpha3: 0.02
-#     alpha4: 0.02
-#     alpha5: 0.02
-#     base_frame_id: "base_link"
-#     beam_skip_distance: 0.05
-#     beam_skip_error_threshold: 0.9
-#     beam_skip_threshold: 0.3
-#     do_beamskip: false
-#     global_frame_id: "odom"
-#     initial_pose: [0.0, 0.0, 0.0, 0.0]
-#     lambda_short: 0.1
-#     laser_likelihood_max_dist: 2.0
-#     laser_max_range: 100.0
-#     laser_min_range: -1.0
-#     laser_model_type: "likelihood_field"
-#     max_beams: 60
-#     max_particles: 2000
-#     min_particles: 500
-#     odom_frame_id: "odom"
-#     pf_err: 0.05
-#     pf_z: 0.99
-#     recovery_alpha_fast: 0.0
-#     recovery_alpha_slow: 0.0
-#     resample_interval: 1
-#     robot_model_type: "nav2_amcl::DifferentialMotionModel"
-#     save_pose_rate: 0.5
-#     set_initial_pose: True
-#     sigma_hit: 0.2
-#     tf_broadcast: true
-#     transform_tolerance: .3
-#     update_min_a: 0.2
-#     update_min_d: 0.25
-#     z_hit: 0.5
-#     z_max: 0.05
-#     z_rand: 0.5
-#     z_short: 0.05
-#     scan_topic: scan
-
-# amcl_map_client:
-#   ros__parameters:
-#     use_sim_time: True
-
-# amcl_rclcpp_node:
-#   ros__parameters:
-#     use_sim_time: True
+        cost_scaling_factor: 0.5
+        inflation_radius: 0.2
