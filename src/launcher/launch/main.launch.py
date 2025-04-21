@@ -5,7 +5,6 @@ from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.actions import SetEnvironmentVariable
-from scripts import GazeboRosPaths
 from launch.actions import ExecuteProcess
 from launch.substitutions import LaunchConfiguration
 import yaml

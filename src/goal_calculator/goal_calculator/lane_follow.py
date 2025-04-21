@@ -18,6 +18,7 @@ from collections import defaultdict
 from goal_calculator.ros2_wrapper import Subscription, Message, Publisher, Config, NodeGlobal
 from interfaces.srv import LaneFollowToggle
 import scipy
+from collections import deque
 
 
 # convention: all coordinates are grid unless specified global in variable
@@ -58,6 +59,135 @@ def get_point_at_distance(point, quaternion, distance):
     forward_vector = forward_vector / np.linalg.norm(forward_vector)    
     new_point = point + forward_vector * distance    
     return new_point
+
+def get_nearest_point_bfs(src, grid):
+    """
+    Find nearest point with occupancy > 0 using BFS
+    
+    Args:
+        src: Source point (x, y)
+        grid: OccupancyGrid with data and info
+    
+    Returns:
+        Tuple of (found, destination_point)
+    """
+    visited_vec = []
+    visited = set()
+    
+    def hash_coords(coords):
+        return (coords[0] << 32) | coords[1]
+    
+    q = deque()
+    q.append(src)
+    
+    while q:
+        p = q.popleft()
+        
+        # Check if current point has occupancy > 0
+        if grid.data[p[1] * grid.info.width + p[0]] > 0:
+            return True, p
+        
+        # Check if distance from source exceeds threshold
+        if math.sqrt((p[0] - src[0])**2 + (p[1] - src[1])**2) > 60:
+            return False, None
+        
+        # Generate neighbors
+        neighbours = [
+            (p[0] + 1, p[1]),  # right
+            (p[0], p[1] + 1),  # down
+            (p[0] - 1, p[1]),  # left
+            (p[0], p[1] - 1)   # up
+        ]
+        
+        visited_vec.append(p)
+        
+        for neighbour in neighbours:
+            # Check bounds
+            if neighbour[0] >= grid.info.width or neighbour[0] < 0:
+                continue
+            if neighbour[1] >= grid.info.height or neighbour[1] < 0:
+                continue
+                
+            # Add to queue if not visited
+            neighbour_hash = hash_coords(neighbour)
+            if neighbour_hash not in visited:
+                q.append(neighbour)
+                visited.add(neighbour_hash)
+    
+    return False, None
+
+
+def get_connected_points_bfs(src, grid):
+    """
+    Find all connected points with occupancy > 0 using BFS
+    
+    Args:
+        src: Source point (x, y)
+        grid: OccupancyGrid with data and info
+    
+    Returns:
+        List of connected points
+    """
+    visited = set()
+    q = deque()
+    
+    def hash_coords(x, y):
+        return (x << 32) | y
+    
+    width = grid.info.width
+    height = grid.info.height
+    
+    src_hash = hash_coords(src[0], src[1])
+    visited.add(src_hash)
+    q.append(src)
+    
+    skip_dist = 7
+    
+    # Direction arrays
+    cdx = [1, 0, -1, 0, 1, -1, 1, -1]
+    cdy = [0, 1, 0, -1, 1, -1, -1, 1]
+    
+    # Generate skipped positions (same as C++ logic)
+    dx = []
+    dy = []
+    for i in range(skip_dist * 8):
+        c = (i // 8) + 1
+        dx.append(c * cdx[i % 8])
+        dy.append(c * cdy[i % 8])
+    
+    connected = []
+    
+    while q:
+        p = q.popleft()
+        connected.append(p)
+        
+        # Check 8 directions with skip_dist
+        for i in range(8):
+            nx = p[0] + dx[i]
+            ny = p[1] + dy[i]
+            
+            # Check bounds
+            if nx < 0 or nx >= width or ny < 0 or ny >= height:
+                continue
+            
+            # Check if cell has value > 0
+            if grid.data[ny * width + nx] <= 0:
+                continue
+            
+            # Check if already visited
+            hash_val = hash_coords(nx, ny)
+            if hash_val in visited:
+                continue
+            
+            visited.add(hash_val)
+            q.append((nx, ny))
+        
+        # Early stopping condition (commented out in original)
+        # if len(connected) > 10000:
+        #     break
+    
+    return connected
+
         
 
 class CandidateGoal:
@@ -199,6 +329,8 @@ class GoalCalculator(Node):
         
         subscription_info = {
             "map": ["/map/current", OccupancyGrid],
+            "map_y": ["/map/yellow/local/interp", OccupancyGrid],
+            "map_w": ["/map/white/local/near", OccupancyGrid],
             "odom": ["odom", Odometry],
             "robot_pose_global": ["/map/robot_pose_global", PoseStamped],
             "robot_pose_grid": ["/map/robot_pose_grid", PoseStamped],
@@ -254,7 +386,7 @@ class GoalCalculator(Node):
             if not (map_data is None):
                 NodeGlobal.log_info("Local map shape: "+str(map_data.shape))
             if robot_coords_grid == None or map_data is None:
-                NodeGlobal.log_info("Not enough information to search and publish yet.")
+                NodeGlobal.log_info("Waiting for subscriptions")
                 return
             if self.start == True:
                 NodeGlobal.log_info("Publishing start goal")
@@ -286,10 +418,10 @@ class GoalCalculator(Node):
             end = time.time()
             NodeGlobal.log_info(str(NodeGlobal.goals))
             if goal_pose != False:
-                NodeGlobal.log_info(f"Goal pose calculated (Time taken:{end-start})")
+                NodeGlobal.log_info(f"Goal pose calculated (Time taken:{end-start}s)")
                 self.publish_goal(goal_pose)
             else:
-                NodeGlobal.log_info(f"No valid goal pose found (Time taken: {end-start})")
+                NodeGlobal.log_info(f"No valid goal pose found (Time taken: {end-start}s)")
 
     # def check_shutdown(self):
     #     shutdown_coords_global = Config.config["shutdown_coords_global"]
@@ -335,43 +467,62 @@ class GoalCalculator(Node):
         Filter midpoints
         Pick midpoint with best heuristic
         """
-        def get_top2_clusters(binary_array, eps=Config.config["dbscan_eps"], min_samples=Config.config["dbscan_min_samples"]):
-            points = np.argwhere(binary_array > 0)
-            points = points[:, [1, 0]]  # Swap columns to get (x, y) format
-            if len(points) < min_samples:
-                return [np.array([]), np.array([])]
-            dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-            clusters = dbscan.fit_predict(points)
-            unique_labels = np.unique(clusters)
-            unique_labels = unique_labels[unique_labels != -1]
-            if len(unique_labels) == 0:
-                return [np.array([]), np.array([])]
-            cluster_sizes = [(label, np.sum(clusters == label)) for label in unique_labels]
-            cluster_sizes.sort(key=lambda x: x[1], reverse=True)
-            result = []
-            for i in range(2):
-                if i < len(cluster_sizes):
-                    label = cluster_sizes[i][0]
-                    cluster_points = points[clusters == label]
-                    result.append(cluster_points)
-                else:
-                    result.append(np.array([]))
-            return result
+        # def get_top1_cluster(binary_array, eps=Config.config["dbscan_eps"], min_samples=Config.config["dbscan_min_samples"]):
+        #     points = np.argwhere(binary_array > 0)
+        #     points = points[:, [1, 0]]  # Swap columns to get (x, y) format
+        #     if len(points) < min_samples:
+        #         return [np.array([]), np.array([])]
+        #     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+        #     clusters = dbscan.fit_predict(points)
+        #     unique_labels = np.unique(clusters)
+        #     unique_labels = unique_labels[unique_labels != -1]
+        #     if len(unique_labels) == 0:
+        #         return [np.array([]), np.array([])]
+        #     cluster_sizes = [(label, np.sum(clusters == label)) for label in unique_labels]
+        #     cluster_sizes.sort(key=lambda x: x[1], reverse=True)
+        #     result = []
+        #     for i in range(2):
+        #         if i < len(cluster_sizes):
+        #             label = cluster_sizes[i][0]
+        #             cluster_points = points[clusters == label]
+        #             result.append(cluster_points)
+        #         else:
+        #             result.append(np.array([]))
+        #     return result
 
-        map_data = Subscription.subs["map"].get_latest_data()
-        clusters_with_distance = []
-        
-        clusters = get_top2_clusters(map_data)
-        NodeGlobal.log_info("Cluster shapes: "+str([cluster.shape for cluster in clusters]))
-        for cluster in clusters:
-            if cluster.shape[0] < 200:
+        def get_cluster(map_name):
+            map_data = Subscription.subs[map_name].get_latest_message()
+            src = get_nearest_point_bfs([int(x) for x in Subscription.subs["robot_pose_grid"].get_latest_data()], Subscription.subs[map_name].get_latest_message())
+            if not src[0]:
                 return False
-            tree = cKDTree(cluster)
-            distance, _ = tree.query(robot_coords_grid, k=1)
-            clusters_with_distance.append((distance, cluster))
-        clusters_with_distance.sort(key=lambda x: x[0])
-        closest_cluster_distance, clusters[0] = clusters_with_distance[0]
-        closest_cluster_distance, clusters[1] = clusters_with_distance[1]
+            return get_connected_points_bfs(src[1], Subscription.subs[map_name].get_latest_message())
+
+        yellow_cluster = get_cluster("map_y")
+        if not yellow_cluster:
+            NodeGlobal.log_info("No yellow cluster found")
+
+        white_cluster = get_cluster("map_w")
+        if not white_cluster:
+            NodeGlobal.log_info("No white cluster found")
+
+        if not white_cluster or not yellow_cluster:
+            return False
+
+        clusters = [yellow_cluster, white_cluster]
+        # map_data = Subscription.subs["map"].get_latest_data()
+        # clusters_with_distance = []
+        
+        # clusters = get_top2_clusters(map_data)
+        # NodeGlobal.log_info("Cluster shapes: "+str([cluster.shape for cluster in clusters]))
+        # for cluster in clusters:
+        #     if cluster.shape[0] < 200 and len(clusters) > 2:
+        #         return False
+        #     tree = cKDTree(cluster)
+        #     distance, _ = tree.query(robot_coords_grid, k=1)
+        #     clusters_with_distance.append((distance, cluster))
+        # clusters_with_distance.sort(key=lambda x: x[0])
+        # closest_cluster_distance, clusters[0] = clusters_with_distance[0]
+        # closest_cluster_distance, clusters[1] = clusters_with_distance[1]
         for i, cluster in enumerate(clusters):
             clusters[i] = np.array([convert_to_global_coords(point) for point in cluster])
 
