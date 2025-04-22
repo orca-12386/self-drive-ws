@@ -58,11 +58,13 @@ public:
 class DetectionSubscriber {
 public:
     DetectionSubscriber(rclcpp::Node* node, std::string topic, double distance_threshold, std::function<std::array<double, 3>()> get_odometry_location_func, std::function<double()> get_odometry_yaw_func) {
+        client_cb_group = nullptr;
+        rclcpp::SubscriptionOptions options;
+        options.callback_group = client_cb_group;        
         this->get_odometry_location_func = get_odometry_location_func;
         this->get_odometry_yaw_func = get_odometry_yaw_func;
         this->node = node;
-        this->sub = node->create_subscription<geometry_msgs::msg::Point>(
-            topic, 10, std::bind(&DetectionSubscriber::detectionCallback, this, std::placeholders::_1));
+        this->sub = node->create_subscription<geometry_msgs::msg::Point>(topic, 10, std::bind(&DetectionSubscriber::detectionCallback, this, std::placeholders::_1), options);
         recv = {false, false};
         this->distance_threshold = distance_threshold;
     }
@@ -159,6 +161,7 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr sub;
     std::array<Detection*, 2> detections;
     rclcpp::Node* node;
+    rclcpp::CallbackGroup::SharedPtr client_cb_group;
 };
     
 
