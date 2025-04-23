@@ -14,7 +14,7 @@ controller_server:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.250
-      yaw_goal_tolerance: 0.50
+      yaw_goal_tolerance: 0.250
     precise_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -25,13 +25,13 @@ controller_server:
     # my DWB parameters 
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
-      debug_trajectory_details: True
+      debug_trajectory_details: false
       min_vel_x: 0.09
       min_vel_y: 0.01
       max_vel_x: 1.7
       max_vel_y: 1.7
       max_vel_theta: 0.8
-      min_speed_xy: 1.0
+      min_speed_xy: 0.0
       max_speed_xy: 1.7
       min_speed_theta: 0.0
       acc_lim_x: 1.8
@@ -57,7 +57,7 @@ controller_server:
       critics: ["RotateToGoal", "ObstacleFootprint", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       BaseObstacle:scale: 0.02
       PathAlign.scale: 50.0
-      PathAlign.forward_point_distance: 0.9
+      PathAlign.forward_point_distance: 0.5
       GoalAlign.scale: 5.0
       GoalAlign.forward_point_distance: 0.1
       PathDist.scale: 32.0
@@ -83,8 +83,8 @@ local_costmap:
       width: 10
       height: 10
       resolution: 0.06
-      robot_radius: 0.35
-      plugins: ["static_layer", "inflation_layer"]
+      robot_radius: 0.2
+      plugins: ["static_layer"] # , "inflation_layer"]
       # plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
 
       static_layer:
@@ -122,4 +122,4 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 0.5
-        inflation_radius: 0.2
+        inflation_radius: 0.8

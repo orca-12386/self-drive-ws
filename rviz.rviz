@@ -9,8 +9,6 @@ Panels:
         - /Pose1
         - /TF1
         - /Map1
-        - /Path1
-        - /Polygon2
       Splitter Ratio: 0.5
     Tree Height: 511
   - Class: rviz_common/Selection
@@ -51,26 +49,6 @@ Visualization Manager:
       Plane: XY
       Plane Cell Count: 10
       Reference Frame: <Fixed Frame>
-      Value: true
-    - Alpha: 1
-      Axes Length: 1
-      Axes Radius: 0.10000000149011612
-      Class: rviz_default_plugins/Pose
-      Color: 255; 25; 0
-      Enabled: true
-      Head Length: 0.30000001192092896
-      Head Radius: 0.10000000149011612
-      Name: Pose
-      Shaft Length: 1
-      Shaft Radius: 0.05000000074505806
-      Shape: Arrow
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /dlo/odom_node/pose
       Value: true
     - Alpha: 1
       Axes Length: 1
@@ -199,13 +177,13 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /map
+        Value: /map/motion_control
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /map_updates
+        Value: /map/motion_control_updates
       Use Timestamp: false
       Value: true
     - Alpha: 1
@@ -342,7 +320,7 @@ Visualization Manager:
         Head Radius: 0.10000000149011612
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
-        Value: Arrow
+        Value: Axes
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -353,9 +331,9 @@ Visualization Manager:
       Value: true
     - Alpha: 1
       Class: rviz_default_plugins/Polygon
-      Color: 25; 255; 0
+      Color: 28; 113; 216
       Enabled: true
-      Name: Polygon
+      Name: globalPolygon
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -366,9 +344,9 @@ Visualization Manager:
       Value: true
     - Alpha: 1
       Class: rviz_default_plugins/Polygon
-      Color: 192; 97; 203
+      Color: 0; 255; 0
       Enabled: true
-      Name: Polygon
+      Name: localPolygon
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -376,6 +354,18 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /local_costmap/published_footprint
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /marker
       Value: true
   Enabled: true
   Global Options:
@@ -423,16 +413,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 16.109699249267578
+      Distance: 34.40821838378906
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -5.314428806304932
-        Y: 45.822757720947266
-        Z: 6.792426586151123
+        X: -4.424286842346191
+        Y: 52.543025970458984
+        Z: 7.917252540588379
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
