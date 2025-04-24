@@ -4,9 +4,6 @@
 [submodule "self_drive_course"]
 	path = src/self_drive_course
 	url = git@github.com:orca-12386/self_drive_course.git
-[submodule "zed-ros2-wrapper"]
-	path = src/zed-ros2-wrapper
-	url = https://github.com/stereolabs/zed-ros2-wrapper.git
 [submodule "direct_lidar_inertial_odometry"]
 	path = src/direct_lidar_inertial_odometry
 	url = https://github.com/vectr-ucla/direct_lidar_inertial_odometry.git
@@ -15,6 +12,9 @@
 	path = src/ouster-ros
 	url = https://github.com/ouster-lidar/ouster-ros.git
 	branch = ros2
-[submodule "direct_lidar_odometry"]
+[submodule "src/zed-ros2-wrapper"]
+	path = src/zed-ros2-wrapper
+	url = git@github.com:W-OK-E/zed-ros2-wrapper.git
+[submodule "src/direct_lidar_odometry"]
 	path = src/direct_lidar_odometry
-	url = https://github.com/vivaad/direct_lidar_odometry.git
+	url = git@github.com:W-OK-E/direct_lidar_odometry.git
