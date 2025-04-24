@@ -6,6 +6,8 @@
 #include <std_msgs/msg/bool.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -54,17 +56,27 @@ public:
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
             "/zed_node/stereocamera/camera_info", 10, std::bind(&HeightMaskPublisherNode::cameraInfoCallback, this, std::placeholders::_1));
     
+        odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
+            "/odometry", 10, std::bind(&HeightMaskPublisherNode::odomCallback, this, std::placeholders::_1)
+        );
         rgb_recv = false;
         depth_recv = false;
         camera_info_recv = false;
+        odom_recv = false;
 
-        mask_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask", 10);
+        mask_barrel_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/barrel", 10);
+        mask_mannequin_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/mannequin", 10);
+        mask_tyre_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/tyre", 10);
+        pointcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/height_mask/pointcloud", 10);
 
         timer = this->create_wall_timer(
             std::chrono::milliseconds(40), std::bind(&HeightMaskPublisherNode::timer_callback, this));
     };
 
 private:
+    const float pitch = 23.5f * M_PI / 180.0f;
+    const float cos_pitch = cos(pitch);
+    const float sin_pitch = sin(pitch);
     void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
         this->rgb_image_msg = msg;
         rgb_recv = true;
@@ -78,6 +90,10 @@ private:
     void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg) {
         this->camera_info_msg = msg;
         camera_info_recv = true;
+    }
+    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+        this->odom_msg = msg;
+        odom_recv = true;
     }
 
     void log(std::string str) {
@@ -95,8 +111,6 @@ private:
         double fy = camera_info->k[4];
         double cx = camera_info->k[2];
         double cy = camera_info->k[5];
-        // double u = location.x;
-        // double v = location.y;
         double z = depth;
         double x = ((u-cx)*z)/fx;
         double y = ((v-cy)*z)/fy;
@@ -106,7 +120,16 @@ private:
         p.z = z;
         return p;
     }
+    Point cloudPointToBaselink(Point &cloud_point) {
+        Point base_link_point;
+        base_link_point.x = cloud_point.z * cos_pitch - cloud_point.y * sin_pitch;
+        base_link_point.y = -cloud_point.x;
+        base_link_point.z =
+            1.5f - cloud_point.z * sin_pitch - cloud_point.y * cos_pitch;
+        // base_link_point.rgba = cloud_point.rgba;
 
+        return base_link_point;
+    }
 
     void publish_mask(sensor_msgs::msg::Image::SharedPtr rgb, sensor_msgs::msg::Image::SharedPtr depth, sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {    
         Timer t = Timer("sensor msg to cv mat");
@@ -120,50 +143,80 @@ private:
             return;
         } 
 
-        cv::Mat mask(rgb_image.rows,rgb_image.cols, CV_8U, cv::Scalar(0));
-        // cv::Mat gray;
-        // cv::cvtColor(rgb_image, gray, cv::COLOR_BGR2GRAY);
-        // cv::Mat blurred;
-        // cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 1.5);
-        // cv::Mat edges;
-        // cv::Canny(blurred, edges, 50, 150);
-        // if(edges.empty()) {
-        //     return;
-        // }
-        // log("edge");
-        // std::vector<std::vector<cv::Point>> contours;
-        // std::vector<cv::Vec4i> hierarchy;
-        // cv::findContours(edges, contours, hierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-        // if(contours.size() == 0) {
-        //     return;
-        // }
-        // for (const auto& contour : contours) {
-        //     std::vector<cv::Point> approx;
-        //     cv::approxPolyDP(contour, approx, 0.02 * cv::arcLength(contour, true), true);    
-        //     if (approx.size() == 4) {
-        //         cv::Rect boundingBox = cv::boundingRect(approx);
-        //         cv::rectangle(mask, boundingBox, cv::Scalar(255), 2);
-        //     }
-        // }
-        // log("contour");
-
+        cv::Mat mask_barrel(rgb_image.rows,rgb_image.cols, CV_8U, cv::Scalar(0));
+        cv::Mat mask_tyre(rgb_image.rows,rgb_image.cols, CV_8U, cv::Scalar(0));
+        cv::Mat mask_mannequin(rgb_image.rows,rgb_image.cols, CV_8U, cv::Scalar(0));
         Point p;
         double depthvalue;
-        for(int i = 0;i<mask.rows;i++) {
-            for(int j = 0;j<mask.cols;j++) {
+
+        std::vector<float> points;
+
+        for(int i = 0;i<mask_barrel.rows;i++) {
+            for(int j = 0;j<mask_barrel.cols;j++) {
                 depthvalue = static_cast<double>(depth_image.at<float>(i,j));
                 p = convert_depth_to_point(j, i, depthvalue, camera_info);
-                if(!(p.z < 20 && p.y > 0)) {
-                    mask.at<int>(i,j) = 0;
+                p = cloudPointToBaselink(p);
+                if(!(p.x < 15 && p.z > 0.6 && p.z < 1.1)) {
+                    mask_barrel.at<uchar>(i,j) = 0;
                 } else {
-                    mask.at<int>(i,j) = 255;
+                    mask_barrel.at<uchar>(i,j) = 255;
+                    if (std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z)) {
+                        points.push_back(static_cast<float>(p.x));
+                        points.push_back(static_cast<float>(p.y));
+                        points.push_back(static_cast<float>(p.z));
+                    }
+                }
+                if (!(p.x < 15 && p.z > 0.1 && p.z < 0.5)) {
+                    mask_tyre.at<uchar>(i,j) = 0;
+                } else {
+                    mask_tyre.at<uchar>(i,j) = 255;
+                }
+                if (!(p.x < 15 && p.z > 1.1 && p.z < 1.9)) {
+                    mask_mannequin.at<uchar>(i,j) = 0;
+                } else {
+                    mask_mannequin.at<uchar>(i,j) = 255;
                 }
             }
         }
-        // log("xyz");
 
-        mask_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask).toImageMsg();
-        mask_pub->publish(*mask_msg);
+        mask_barrel_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_barrel).toImageMsg();
+        mask_barrel_pub->publish(*mask_barrel_msg);
+
+        mask_mannequin_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_mannequin).toImageMsg();
+        mask_mannequin_pub->publish(*mask_mannequin_msg);
+
+        mask_tyre_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_tyre).toImageMsg();
+        mask_tyre_pub->publish(*mask_tyre_msg);
+
+        sensor_msgs::msg::PointCloud2 cloud_msg;
+        cloud_msg.header.stamp = rgb->header.stamp;
+        cloud_msg.header.frame_id = camera_info->header.frame_id;
+
+        cloud_msg.height = 1;
+        cloud_msg.width = points.size() / 3;
+        cloud_msg.fields.resize(3);
+        cloud_msg.fields[0].name = "x";
+        cloud_msg.fields[0].offset = 0;
+        cloud_msg.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        cloud_msg.fields[0].count = 1;
+        cloud_msg.fields[1].name = "y";
+        cloud_msg.fields[1].offset = 4;
+        cloud_msg.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        cloud_msg.fields[1].count = 1;
+        cloud_msg.fields[2].name = "z";
+        cloud_msg.fields[2].offset = 8;
+        cloud_msg.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        cloud_msg.fields[2].count = 1;
+
+        cloud_msg.is_bigendian = false;
+        cloud_msg.point_step = 12;
+        cloud_msg.row_step = cloud_msg.point_step * cloud_msg.width;
+        cloud_msg.is_dense = false;
+
+        cloud_msg.data.resize(points.size() * sizeof(float));
+        memcpy(&cloud_msg.data[0], points.data(), points.size() * sizeof(float));
+
+        pointcloud_pub->publish(cloud_msg);
         log("published");
     }
 
@@ -179,24 +232,31 @@ private:
 
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_sub, depth_sub;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub;
-    
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
+
     bool rgb_recv;
     bool depth_recv;
     bool camera_info_recv;
-    
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_pub;
-    
+    bool odom_recv;
+
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_barrel_pub;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_tyre_pub;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_mannequin_pub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub;
+
     sensor_msgs::msg::Image::SharedPtr rgb_image_msg, depth_image_msg;
     sensor_msgs::msg::CameraInfo::SharedPtr camera_info_msg;
+    nav_msgs::msg::Odometry::SharedPtr odom_msg;
 
-    sensor_msgs::msg::Image::SharedPtr mask_msg;
+    sensor_msgs::msg::Image::SharedPtr mask_barrel_msg;
+    sensor_msgs::msg::Image::SharedPtr mask_tyre_msg;
+    sensor_msgs::msg::Image::SharedPtr mask_mannequin_msg;
 
     rclcpp::TimerBase::SharedPtr timer;
-    
+
     cv_bridge::CvImagePtr rgb_image_ptr, depth_image_ptr;
     cv::Mat rgb_image, depth_image;
     cv::Mat y_image, height_mask;
-    
 };
 
 int main(int argc, char** argv) {
