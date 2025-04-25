@@ -11,11 +11,15 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include <memory>
 #include <string>
 #include <cmath>
+#include <unordered_map>
+#include <algorithm>
+#include <vector>
 
 class Timer {
 public:
@@ -38,6 +42,35 @@ private:
     std::chrono::steady_clock::time_point begin;
     std::chrono::steady_clock::time_point end;
     std::string name;
+};
+
+// Adding the missing Centroid3D class
+class Centroid3D {
+public:
+    Centroid3D() : x(0.0), y(0.0), z(0.0), point_count(0) {}
+    
+    void addPoint(double px, double py, double pz) {
+        x_sum += px;
+        y_sum += py;
+        z_sum += pz;
+        point_count++;
+    }
+    
+    void finalize() {
+        if (point_count > 0) {
+            x = x_sum / point_count;
+            y = y_sum / point_count;
+            z = z_sum / point_count;
+        }
+    }
+    
+    double x, y, z;
+    int point_count;
+    
+private:
+    double x_sum = 0.0;
+    double y_sum = 0.0;
+    double z_sum = 0.0;
 };
 
 class HeightMaskPublisherNode : public rclcpp::Node
@@ -69,14 +102,25 @@ public:
         mask_tyre_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/tyre", 10);
         pointcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/height_mask/pointcloud", 10);
 
+        barrel_centroids_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/detector/traffic_drum/coordinates", 10);
+        mannequin_centroids_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/detector/pedestrain/coordinates", 10);
+        tyre_centroids_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/detector/tire/coordinates", 10);
+
         timer = this->create_wall_timer(
             std::chrono::milliseconds(40), std::bind(&HeightMaskPublisherNode::timer_callback, this));
+            
+        height_ranges["tyre"] = std::make_pair(0.1f, 0.5f);
+        height_ranges["barrel"] = std::make_pair(0.6f, 1.1f);
+        height_ranges["mannequin"] = std::make_pair(1.1f, 2.2f);
     };
 
 private:
     const float pitch = 23.5f * M_PI / 180.0f;
     const float cos_pitch = cos(pitch);
     const float sin_pitch = sin(pitch);
+    
+    std::unordered_map<std::string, std::pair<float, float>> height_ranges;
+    
     void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
         this->rgb_image_msg = msg;
         rgb_recv = true;
@@ -120,6 +164,7 @@ private:
         p.z = z;
         return p;
     }
+    
     Point cloudPointToBaselink(Point &cloud_point) {
         Point base_link_point;
         base_link_point.x = cloud_point.z * cos_pitch - cloud_point.y * sin_pitch;
@@ -129,6 +174,54 @@ private:
         // base_link_point.rgba = cloud_point.rgba;
 
         return base_link_point;
+    }
+    void computeObstacleLabels(const cv::Mat& depth_image, sensor_msgs::msg::CameraInfo::SharedPtr camera_info, 
+                              cv::Mat& obstacle_labels, std::vector<float>& max_obstacle_heights, cv::Mat& centroids) {
+
+        obstacle_labels = cv::Mat::zeros(depth_image.rows, depth_image.cols, CV_32S);
+        
+        cv::Mat valid_points = cv::Mat::zeros(depth_image.rows, depth_image.cols, CV_8U);
+        
+        for (int i = 0; i < depth_image.rows; i++) {
+            for (int j = 0; j < depth_image.cols; j++) {
+                double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
+                
+                if (!std::isfinite(depthvalue) || depthvalue <= 0) {
+                    continue;
+                }
+                
+                Point p = convert_depth_to_point(j, i, depthvalue, camera_info);
+                Point base_point = cloudPointToBaselink(p);
+                
+                if (base_point.x < 15 && base_point.z > 0.1 && base_point.z < 2.0) {
+                    valid_points.at<uchar>(i, j) = 255;
+                }
+            }
+        }
+        
+        cv::Mat labels, stats, centroids_mat;
+        int num_labels = cv::connectedComponentsWithStats(valid_points, labels, stats, centroids_mat, 8); // basically clustering
+        
+        centroids = centroids_mat; // Store centroids for later use
+        max_obstacle_heights.resize(num_labels, 0.0f);
+        
+        for (int i = 0; i < depth_image.rows; i++) {
+            for (int j = 0; j < depth_image.cols; j++) {
+                int label = labels.at<int>(i, j);
+
+                if (label > 0) {
+                    double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
+                    if (std::isfinite(depthvalue) && depthvalue > 0) {
+                        Point p = convert_depth_to_point(j, i, depthvalue, camera_info);
+                        Point base_point = cloudPointToBaselink(p);
+                        
+                        obstacle_labels.at<int>(i, j) = label;
+                        
+                        max_obstacle_heights[label] = std::max(max_obstacle_heights[label], static_cast<float>(base_point.z));
+                    }
+                }
+            }
+        }
     }
 
     void publish_mask(sensor_msgs::msg::Image::SharedPtr rgb, sensor_msgs::msg::Image::SharedPtr depth, sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {    
@@ -143,41 +236,84 @@ private:
             return;
         } 
 
-        cv::Mat mask_barrel(rgb_image.rows,rgb_image.cols, CV_8U, cv::Scalar(0));
-        cv::Mat mask_tyre(rgb_image.rows,rgb_image.cols, CV_8U, cv::Scalar(0));
-        cv::Mat mask_mannequin(rgb_image.rows,rgb_image.cols, CV_8U, cv::Scalar(0));
-        Point p;
-        double depthvalue;
+        cv::Mat mask_barrel(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
+        cv::Mat mask_tyre(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
+        cv::Mat mask_mannequin(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
+        
+        cv::Mat obstacle_labels;
+        std::vector<float> max_obstacle_heights;
+        cv::Mat centroids_mat;
+        computeObstacleLabels(depth_image, camera_info, obstacle_labels, max_obstacle_heights, centroids_mat);
+        
+        std::vector<float> points_barrel;
+        std::vector<float> points_mannequin;
+        std::vector<float> points_tyre;
+        
+        std::vector<std::string> obstacle_types(max_obstacle_heights.size(), "");
+        for (size_t i = 1; i < max_obstacle_heights.size(); i++) {
+            float max_height = max_obstacle_heights[i];
+            
+            // Classify obstacle based on max height
+            if (max_height >= height_ranges["tyre"].first && max_height <= height_ranges["tyre"].second) {
+                obstacle_types[i] = "tyre";
+            } else if (max_height >= height_ranges["barrel"].first && max_height <= height_ranges["barrel"].second) {
+                obstacle_types[i] = "barrel";
+            } else if (max_height >= height_ranges["mannequin"].first && max_height <= height_ranges["mannequin"].second) {
+                obstacle_types[i] = "mannequin";
+            }
+        }
+        
+        std::vector<Centroid3D> barrel_centroids;
+        std::vector<Centroid3D> mannequin_centroids;
+        std::vector<Centroid3D> tyre_centroids;
 
-        std::vector<float> points;
+        std::unordered_map<int, int> barrel_centroid_indices;
+        std::unordered_map<int, int> mannequin_centroid_indices;
+        std::unordered_map<int, int> tyre_centroid_indices;
 
-        for(int i = 0;i<mask_barrel.rows;i++) {
-            for(int j = 0;j<mask_barrel.cols;j++) {
-                depthvalue = static_cast<double>(depth_image.at<float>(i,j));
-                p = convert_depth_to_point(j, i, depthvalue, camera_info);
-                p = cloudPointToBaselink(p);
-                if(!(p.x < 15 && p.z > 0.6 && p.z < 1.1)) {
-                    mask_barrel.at<uchar>(i,j) = 0;
-                } else {
-                    mask_barrel.at<uchar>(i,j) = 255;
-                    if (std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z)) {
-                        points.push_back(static_cast<float>(p.x));
-                        points.push_back(static_cast<float>(p.y));
-                        points.push_back(static_cast<float>(p.z));
+
+        for (size_t i = 1; i < obstacle_types.size(); i++) {
+            if (obstacle_types[i] == "barrel") {
+                barrel_centroid_indices[i] = barrel_centroids.size();
+                barrel_centroids.push_back(Centroid3D());
+            } else if (obstacle_types[i] == "mannequin") {
+                mannequin_centroid_indices[i] = mannequin_centroids.size();
+                mannequin_centroids.push_back(Centroid3D());
+            } else if (obstacle_types[i] == "tyre") {
+                tyre_centroid_indices[i] = tyre_centroids.size();
+                tyre_centroids.push_back(Centroid3D());
+            }
+        }
+
+        for (int i = 0; i < depth_image.rows; i++) {
+            for (int j = 0; j < depth_image.cols; j++) {
+                int label = obstacle_labels.at<int>(i, j);
+                if (label > 0) { // Skip background
+                    double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
+                    if (std::isfinite(depthvalue) && depthvalue > 0) {
+                        Point p = convert_depth_to_point(j, i, depthvalue, camera_info);
+                        Point base_point = cloudPointToBaselink(p);
+                        
+                        if (obstacle_types[label] == "barrel") {
+                            mask_barrel.at<uchar>(i, j) = 255;
+                            
+                            barrel_centroids[barrel_centroid_indices[label]].addPoint(base_point.x, base_point.y, base_point.z);
+
+                        } else if (obstacle_types[label] == "tyre") {
+                            mask_tyre.at<uchar>(i, j) = 255;
+                            tyre_centroids[tyre_centroid_indices[label]].addPoint(base_point.x, base_point.y, base_point.z);
+
+                        } else if (obstacle_types[label] == "mannequin") {
+                            mask_mannequin.at<uchar>(i, j) = 255;
+                            mannequin_centroids[mannequin_centroid_indices[label]].addPoint(base_point.x, base_point.y, base_point.z);
+                        }
                     }
-                }
-                if (!(p.x < 15 && p.z > 0.1 && p.z < 0.5)) {
-                    mask_tyre.at<uchar>(i,j) = 0;
-                } else {
-                    mask_tyre.at<uchar>(i,j) = 255;
-                }
-                if (!(p.x < 15 && p.z > 1.1 && p.z < 1.9)) {
-                    mask_mannequin.at<uchar>(i,j) = 0;
-                } else {
-                    mask_mannequin.at<uchar>(i,j) = 255;
                 }
             }
         }
+        for (auto& centroid : barrel_centroids) centroid.finalize();
+        for (auto& centroid : mannequin_centroids) centroid.finalize();
+        for (auto& centroid : tyre_centroids) centroid.finalize();
 
         mask_barrel_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_barrel).toImageMsg();
         mask_barrel_pub->publish(*mask_barrel_msg);
@@ -187,37 +323,64 @@ private:
 
         mask_tyre_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_tyre).toImageMsg();
         mask_tyre_pub->publish(*mask_tyre_msg);
+        publishCentroids(barrel_centroids, barrel_centroids_pub, "base_link", rgb->header.stamp);
+        publishCentroids(mannequin_centroids, mannequin_centroids_pub, "base_link", rgb->header.stamp);
+        publishCentroids(tyre_centroids, tyre_centroids_pub, "base_link", rgb->header.stamp);
 
-        sensor_msgs::msg::PointCloud2 cloud_msg;
-        cloud_msg.header.stamp = rgb->header.stamp;
-        cloud_msg.header.frame_id = camera_info->header.frame_id;
+        // sensor_msgs::msg::PointCloud2 cloud_msg;
+        // cloud_msg.header.stamp = rgb->header.stamp;
+        // cloud_msg.header.frame_id = camera_info->header.frame_id;
 
-        cloud_msg.height = 1;
-        cloud_msg.width = points.size() / 3;
-        cloud_msg.fields.resize(3);
-        cloud_msg.fields[0].name = "x";
-        cloud_msg.fields[0].offset = 0;
-        cloud_msg.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
-        cloud_msg.fields[0].count = 1;
-        cloud_msg.fields[1].name = "y";
-        cloud_msg.fields[1].offset = 4;
-        cloud_msg.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
-        cloud_msg.fields[1].count = 1;
-        cloud_msg.fields[2].name = "z";
-        cloud_msg.fields[2].offset = 8;
-        cloud_msg.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
-        cloud_msg.fields[2].count = 1;
+        // cloud_msg.height = 1;
+        // cloud_msg.width = points.size() / 3;
+        // cloud_msg.fields.resize(3);
+        // cloud_msg.fields[0].name = "x";
+        // cloud_msg.fields[0].offset = 0;
+        // cloud_msg.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        // cloud_msg.fields[0].count = 1;
+        // cloud_msg.fields[1].name = "y";
+        // cloud_msg.fields[1].offset = 4;
+        // cloud_msg.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        // cloud_msg.fields[1].count = 1;
+        // cloud_msg.fields[2].name = "z";
+        // cloud_msg.fields[2].offset = 8;
+        // cloud_msg.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        // cloud_msg.fields[2].count = 1;
 
-        cloud_msg.is_bigendian = false;
-        cloud_msg.point_step = 12;
-        cloud_msg.row_step = cloud_msg.point_step * cloud_msg.width;
-        cloud_msg.is_dense = false;
+        // cloud_msg.is_bigendian = false;
+        // cloud_msg.point_step = 12;
+        // cloud_msg.row_step = cloud_msg.point_step * cloud_msg.width;
+        // cloud_msg.is_dense = false;
 
-        cloud_msg.data.resize(points.size() * sizeof(float));
-        memcpy(&cloud_msg.data[0], points.data(), points.size() * sizeof(float));
+        // cloud_msg.data.resize(points.size() * sizeof(float));
+        // memcpy(&cloud_msg.data[0], points.data(), points.size() * sizeof(float));
 
-        pointcloud_pub->publish(cloud_msg);
-        log("published");
+        // pointcloud_pub->publish(cloud_msg);
+        // log("published");
+    }
+    void publishCentroids(const std::vector<Centroid3D>& centroids, rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher,const std::string& frame_id,const builtin_interfaces::msg::Time& timestamp) {
+
+        geometry_msgs::msg::PoseArray pose_array;
+        pose_array.header.frame_id = frame_id;
+        pose_array.header.stamp = timestamp;
+        
+        for (const auto& centroid : centroids) {
+            if (centroid.point_count > 0) {
+                geometry_msgs::msg::Pose pose;
+                pose.position.x = centroid.x;
+                pose.position.y = centroid.y;
+                pose.position.z = centroid.z;
+                
+                pose.orientation.x = 0.0;
+                pose.orientation.y = 0.0;
+                pose.orientation.z = 0.0;
+                pose.orientation.w = 1.0;
+                
+                pose_array.poses.push_back(pose);
+            }
+        }
+        
+        publisher->publish(pose_array);
     }
 
     void timer_callback() {
@@ -243,6 +406,9 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_tyre_pub;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_mannequin_pub;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub;
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr barrel_centroids_pub;
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr mannequin_centroids_pub;
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr tyre_centroids_pub;
 
     sensor_msgs::msg::Image::SharedPtr rgb_image_msg, depth_image_msg;
     sensor_msgs::msg::CameraInfo::SharedPtr camera_info_msg;
