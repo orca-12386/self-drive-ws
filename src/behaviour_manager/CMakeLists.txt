@@ -21,6 +21,7 @@ find_package(cv_bridge REQUIRED)
 find_package(interfaces REQUIRED)
 find_package(topic_remapper REQUIRED)
 find_package(intersection_detector REQUIRED)
+find_package(example_interfaces REQUIRED)
 
 add_executable(behaviour_manager_node src/behaviour_manager_node.cpp)
 ament_target_dependencies(behaviour_manager_node
@@ -38,6 +39,7 @@ ament_target_dependencies(behaviour_manager_node
   "interfaces"
   "topic_remapper"
   "intersection_detector"
+  "example_interfaces"
 )
 
 target_include_directories(behaviour_manager_node PRIVATE

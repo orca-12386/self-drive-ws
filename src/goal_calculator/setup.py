@@ -31,7 +31,7 @@ setup(
     include_package_data=True,
     entry_points={
         'console_scripts': [
-            'lane_follow = goal_calculator.lane_follow:main',
+            # 'lane_follow = goal_calculator.lane_follow:main',
             'lane_change = goal_calculator.lane_change:main',
             'right_turn = goal_calculator.right_turn:main',
             'left_turn = goal_calculator.left_turn:main',

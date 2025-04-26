@@ -160,7 +160,7 @@ def generate_launch_description():
             }]
         ),
         Node(
-            package='lane_mapper',
+            package='map_reviser',
             executable='nearest_lane_mapper_node',
             name='nearest_lane_mapper_node'
         )
@@ -168,9 +168,9 @@ def generate_launch_description():
 
     interpolation = [
         Node(
-            package='spline_interp',
-            executable='linear_interp',
-            name='linear_interp',
+            package='map_reviser',
+            executable='yellow_lane_interpolator',
+            name='yellow_lane_interpolator',
         )
     ]
 
@@ -233,12 +233,16 @@ def generate_launch_description():
     launch_goal_calculators = [
         # Lane Follow
         Node(
-            package='goal_calculator',
-            executable='lane_follow',
-            name='lane_follow',
-            parameters=[{
-                'config_file_path': os.path.join(get_package_share_directory('goal_calculator'), 'config','config.yaml')
-            }]),
+            package='goal_calculator_cpp',
+            executable='lane_follower_node',
+            name='lane_follower_node'),
+        # Node(
+        #     package='goal_calculator_cpp',
+        #     executable='lane_follow',
+        #     name='lane_follow',
+        #     parameters=[{
+        #         'config_file_path': os.path.join(get_package_share_directory('goal_calculator'), 'config','config.yaml')
+        #     }]),
         # Lane Change
         Node(
             package='goal_calculator',
@@ -386,7 +390,7 @@ def generate_launch_description():
     
     launch_description.extend(launch_behaviour_manager)
   
-    launch_description.extend(launch_detector)
+    # launch_description.extend(launch_detector)
   
     launch_description.extend(launch_topic_remapper)
 

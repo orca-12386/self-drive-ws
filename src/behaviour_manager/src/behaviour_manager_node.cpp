@@ -11,6 +11,7 @@
 #include <interfaces/srv/lane_follow_toggle.hpp>
 #include <topic_remapper/srv/change_topic.hpp>
 #include <intersection_detector/srv/detect_intersection.hpp>
+#include <example_interfaces/srv/set_bool.hpp>
 
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
@@ -349,17 +350,18 @@ private:
         this->stop_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopAction");
         this->left_turn_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "LeftTurn");
         this->right_turn_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "RightTurn");
+        this->straight_turn_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StraightTurn");
 
         // Services: Start/stop lane follow, change planner topic
         this->change_planner_topic_srv_client = std::make_unique<ServiceClient<topic_remapper::srv::ChangeTopic>>(this, "/topic_remapper/motion_control");
         this->lane_follow_toggle_srv_client = std::make_unique<ServiceClient<interfaces::srv::LaneFollowToggle>>(this, "toggle_lane_follow");
         this->detect_intersection_srv_client = std::make_unique<ServiceClient<intersection_detector::srv::DetectIntersection>>(this, "/detection/intersection");
-
+        this->lane_interpolation_toggle_srv_client = std::make_unique<ServiceClient<example_interfaces::srv::SetBool>>(this, "toggle_lane_interpolation");
 
         lane_follow_toggle_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
         change_planner_topic_request = std::make_shared<topic_remapper::srv::ChangeTopic::Request>();
         detect_intersection_request = std::make_shared<intersection_detector::srv::DetectIntersection::Request>();
-
+        lane_interpolation_toggle_request = std::make_shared<example_interfaces::srv::SetBool::Request>();
 
         near_map_recv = false;
         far_map_recv = false;
@@ -412,20 +414,32 @@ private:
     }
 
 
-    void lane_follow_start() {
-        mode = 1;
-        lane_follow_toggle_request->toggle = true;            
-        lane_follow_toggle_srv_client->call(lane_follow_toggle_request);
-        lane_follow_toggle_srv_client->wait_for_result();
-        log("Started lane follow");
+    void lane_interp_toggle(bool toggle) {
+        lane_interpolation_toggle_request->data = toggle;            
+        lane_interpolation_toggle_srv_client->call(lane_interpolation_toggle_request);
+        lane_interpolation_toggle_srv_client->wait_for_result();
+        if(toggle) {
+            log("Started lane interpolation");
+        } else {
+            log("Stopped lane interpolation");
+        }    
     }
 
-    void lane_follow_stop() {
-        mode = 0;
-        lane_follow_toggle_request->toggle = false;          
-        lane_follow_toggle_srv_client->call(lane_follow_toggle_request);  
+    void lane_follow_toggle(bool toggle) {
+        if (toggle) {
+            mode = 1;
+        } else {
+            mode = 0;
+        }
+        lane_follow_toggle_request->toggle = toggle;            
+        lane_follow_toggle_srv_client->call(lane_follow_toggle_request);
         lane_follow_toggle_srv_client->wait_for_result();
-        log("Stopped lane follow");
+        if(toggle) {
+            log("Started lane follow");
+        } else {
+            log("Stopped lane follow");
+        }
+        lane_interp_toggle(toggle);
     }
 
     void change_motion_control_map(std::string s) {
@@ -494,6 +508,19 @@ private:
         mode = 0;
     }
 
+    void straight_turn() {
+        mode = 2;
+        change_motion_control_map("/map");
+        log("Turning straight");
+        auto send_goal_options = create_send_goal_options();
+        auto goal_msg = create_goal_message(1);
+        straight_turn_action_client->send_goal(goal_msg, send_goal_options);
+        straight_turn_action_client->wait_for_result();
+        log("Turned straight");
+        change_motion_control_map("/map/current");
+        mode = 0;
+    }
+
     void process_detections() {
         std::unordered_map<std::string, bool> is_detected;
         for(const auto & topic : detection_subs) {
@@ -503,12 +530,13 @@ private:
         if(is_detected.at("stop_sign")) {
             log("Stop sign detected");
             // stop following
-            lane_follow_stop();
+            lane_follow_toggle(false);
             // stop
             stop_movement();
             if(detect_intersection()) {
                 switch(turn_sequence[current_turn_index]) {
                     case 0:
+                        straight_turn();
                         break;
                     case 1:
                         right_turn();
@@ -522,19 +550,19 @@ private:
         } else if(is_detected.at("tyre")) {
             log("Tyre detected");
             // stop following
-            lane_follow_stop();
+            lane_follow_toggle(false);
             // change planner map
             lane_change();
         } else if(is_detected.at("traffic_drum")) {
             log("Traffic drum detected");
             // stop following
-            lane_follow_stop();
+            lane_follow_toggle(false);
             // lane change
             lane_change();
         } else {
             // lane follow
             if(mode == 0) {
-                lane_follow_start();
+                lane_follow_toggle(true);
             }
         }        
 /*     
@@ -597,15 +625,17 @@ keep
     std::array<double, 3> odometry_location_arr;
     double odometry_yaw;
 
-    std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client, left_turn_action_client, right_turn_action_client;
+    std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client, left_turn_action_client, right_turn_action_client, straight_turn_action_client;
 
     std::unique_ptr<ServiceClient<interfaces::srv::LaneFollowToggle>> lane_follow_toggle_srv_client;
     std::unique_ptr<ServiceClient<topic_remapper::srv::ChangeTopic>> change_planner_topic_srv_client;
     std::unique_ptr<ServiceClient<intersection_detector::srv::DetectIntersection>> detect_intersection_srv_client;
+    std::unique_ptr<ServiceClient<example_interfaces::srv::SetBool>> lane_interpolation_toggle_srv_client;
 
     std::shared_ptr<interfaces::srv::LaneFollowToggle::Request> lane_follow_toggle_request;
     std::shared_ptr<topic_remapper::srv::ChangeTopic::Request> change_planner_topic_request;
     std::shared_ptr<intersection_detector::srv::DetectIntersection::Request> detect_intersection_request;
+    std::shared_ptr<example_interfaces::srv::SetBool::Request> lane_interpolation_toggle_request;
 
     rclcpp::CallbackGroup::SharedPtr timer_cb_group;
 
