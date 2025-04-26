@@ -6,14 +6,21 @@
 #include <std_msgs/msg/bool.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/point.hpp>  // Changed from point_stamped.hpp
+#include <geometry_msgs/msg/pose_array.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include <memory>
 #include <string>
 #include <cmath>
+#include <unordered_map>
+#include <algorithm>
+#include <vector>
 
 class Timer {
 public:
@@ -38,6 +45,35 @@ private:
     std::string name;
 };
 
+// Adding the missing Centroid3D class
+class Centroid3D {
+public:
+    Centroid3D() : x(0.0), y(0.0), z(0.0), point_count(0) {}
+    
+    void addPoint(double px, double py, double pz) {
+        x_sum += px;
+        y_sum += py;
+        z_sum += pz;
+        point_count++;
+    }
+    
+    void finalize() {
+        if (point_count > 0) {
+            x = x_sum / point_count;
+            y = y_sum / point_count;
+            z = z_sum / point_count;
+        }
+    }
+    
+    double x, y, z;
+    int point_count;
+    
+private:
+    double x_sum = 0.0;
+    double y_sum = 0.0;
+    double z_sum = 0.0;
+};
+
 class HeightMaskPublisherNode : public rclcpp::Node
 {
 public:
@@ -54,17 +90,39 @@ public:
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
             "/zed_node/stereocamera/camera_info", 10, std::bind(&HeightMaskPublisherNode::cameraInfoCallback, this, std::placeholders::_1));
     
+        odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
+            "/odometry", 10, std::bind(&HeightMaskPublisherNode::odomCallback, this, std::placeholders::_1)
+        );
         rgb_recv = false;
         depth_recv = false;
         camera_info_recv = false;
+        odom_recv = false;
 
-        mask_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask", 10);
+        mask_barrel_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/barrel", 10);
+        mask_mannequin_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/mannequin", 10);
+        mask_tyre_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/tyre", 10);
+        pointcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/height_mask/pointcloud", 10);
+
+        // Changed from PointStamped to Point publishers
+        barrel_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/traffic_drum/coordinates", 10);
+        mannequin_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/pedestrian/coordinates", 10);
+        tyre_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/tyre/coordinates", 10);
 
         timer = this->create_wall_timer(
             std::chrono::milliseconds(40), std::bind(&HeightMaskPublisherNode::timer_callback, this));
+            
+        height_ranges["tyre"] = std::make_pair(0.1f, 0.5f);
+        height_ranges["barrel"] = std::make_pair(0.6f, 1.1f);
+        height_ranges["mannequin"] = std::make_pair(1.1f, 2.2f);
     };
 
 private:
+    const float pitch = 23.5f * M_PI / 180.0f;
+    const float cos_pitch = cos(pitch);
+    const float sin_pitch = sin(pitch);
+    
+    std::unordered_map<std::string, std::pair<float, float>> height_ranges;
+    
     void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
         this->rgb_image_msg = msg;
         rgb_recv = true;
@@ -78,6 +136,10 @@ private:
     void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg) {
         this->camera_info_msg = msg;
         camera_info_recv = true;
+    }
+    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+        this->odom_msg = msg;
+        odom_recv = true;
     }
 
     void log(std::string str) {
@@ -95,8 +157,6 @@ private:
         double fy = camera_info->k[4];
         double cx = camera_info->k[2];
         double cy = camera_info->k[5];
-        // double u = location.x;
-        // double v = location.y;
         double z = depth;
         double x = ((u-cx)*z)/fx;
         double y = ((v-cy)*z)/fy;
@@ -106,7 +166,65 @@ private:
         p.z = z;
         return p;
     }
+    
+    Point cloudPointToBaselink(Point &cloud_point) {
+        Point base_link_point;
+        base_link_point.x = cloud_point.z * cos_pitch - cloud_point.y * sin_pitch;
+        base_link_point.y = -cloud_point.x;
+        base_link_point.z =
+            1.5f - cloud_point.z * sin_pitch - cloud_point.y * cos_pitch;
+        // base_link_point.rgba = cloud_point.rgba;
 
+        return base_link_point;
+    }
+    void computeObstacleLabels(const cv::Mat& depth_image, sensor_msgs::msg::CameraInfo::SharedPtr camera_info, 
+                              cv::Mat& obstacle_labels, std::vector<float>& max_obstacle_heights, cv::Mat& centroids) {
+
+        obstacle_labels = cv::Mat::zeros(depth_image.rows, depth_image.cols, CV_32S);
+        
+        cv::Mat valid_points = cv::Mat::zeros(depth_image.rows, depth_image.cols, CV_8U);
+        
+        for (int i = 0; i < depth_image.rows; i++) {
+            for (int j = 0; j < depth_image.cols; j++) {
+                double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
+                
+                if (!std::isfinite(depthvalue) || depthvalue <= 0) {
+                    continue;
+                }
+                
+                Point p = convert_depth_to_point(j, i, depthvalue, camera_info);
+                Point base_point = cloudPointToBaselink(p);
+                
+                if (base_point.x < 15 && base_point.z > 0.1 && base_point.z < 2.0) {
+                    valid_points.at<uchar>(i, j) = 255;
+                }
+            }
+        }
+        
+        cv::Mat labels, stats, centroids_mat;
+        int num_labels = cv::connectedComponentsWithStats(valid_points, labels, stats, centroids_mat, 8); // basically clustering
+        
+        centroids = centroids_mat; // Store centroids for later use
+        max_obstacle_heights.resize(num_labels, 0.0f);
+        
+        for (int i = 0; i < depth_image.rows; i++) {
+            for (int j = 0; j < depth_image.cols; j++) {
+                int label = labels.at<int>(i, j);
+
+                if (label > 0) {
+                    double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
+                    if (std::isfinite(depthvalue) && depthvalue > 0) {
+                        Point p = convert_depth_to_point(j, i, depthvalue, camera_info);
+                        Point base_point = cloudPointToBaselink(p);
+                        
+                        obstacle_labels.at<int>(i, j) = label;
+                        
+                        max_obstacle_heights[label] = std::max(max_obstacle_heights[label], static_cast<float>(base_point.z));
+                    }
+                }
+            }
+        }
+    }
 
     void publish_mask(sensor_msgs::msg::Image::SharedPtr rgb, sensor_msgs::msg::Image::SharedPtr depth, sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {    
         Timer t = Timer("sensor msg to cv mat");
@@ -120,51 +238,142 @@ private:
             return;
         } 
 
-        cv::Mat mask(rgb_image.rows,rgb_image.cols, CV_8U, cv::Scalar(0));
-        // cv::Mat gray;
-        // cv::cvtColor(rgb_image, gray, cv::COLOR_BGR2GRAY);
-        // cv::Mat blurred;
-        // cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 1.5);
-        // cv::Mat edges;
-        // cv::Canny(blurred, edges, 50, 150);
-        // if(edges.empty()) {
-        //     return;
-        // }
-        // log("edge");
-        // std::vector<std::vector<cv::Point>> contours;
-        // std::vector<cv::Vec4i> hierarchy;
-        // cv::findContours(edges, contours, hierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-        // if(contours.size() == 0) {
-        //     return;
-        // }
-        // for (const auto& contour : contours) {
-        //     std::vector<cv::Point> approx;
-        //     cv::approxPolyDP(contour, approx, 0.02 * cv::arcLength(contour, true), true);    
-        //     if (approx.size() == 4) {
-        //         cv::Rect boundingBox = cv::boundingRect(approx);
-        //         cv::rectangle(mask, boundingBox, cv::Scalar(255), 2);
-        //     }
-        // }
-        // log("contour");
+        cv::Mat mask_barrel(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
+        cv::Mat mask_tyre(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
+        cv::Mat mask_mannequin(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
+        
+        cv::Mat obstacle_labels;
+        std::vector<float> max_obstacle_heights;
+        cv::Mat centroids_mat;
+        computeObstacleLabels(depth_image, camera_info, obstacle_labels, max_obstacle_heights, centroids_mat);
+        
+        std::vector<float> points_barrel;
+        std::vector<float> points_mannequin;
+        std::vector<float> points_tyre;
+        
+        std::vector<std::string> obstacle_types(max_obstacle_heights.size(), "");
+        for (size_t i = 1; i < max_obstacle_heights.size(); i++) {
+            float max_height = max_obstacle_heights[i];
+            
+            // Classify obstacle based on max height
+            if (max_height >= height_ranges["tyre"].first && max_height <= height_ranges["tyre"].second) {
+                obstacle_types[i] = "tyre";
+            } else if (max_height >= height_ranges["barrel"].first && max_height <= height_ranges["barrel"].second) {
+                obstacle_types[i] = "barrel";
+            } else if (max_height >= height_ranges["mannequin"].first && max_height <= height_ranges["mannequin"].second) {
+                obstacle_types[i] = "mannequin";
+            }
+        }
+        
+        std::vector<Centroid3D> barrel_centroids;
+        std::vector<Centroid3D> mannequin_centroids;
+        std::vector<Centroid3D> tyre_centroids;
 
-        Point p;
-        double depthvalue;
-        for(int i = 0;i<mask.rows;i++) {
-            for(int j = 0;j<mask.cols;j++) {
-                depthvalue = static_cast<double>(depth_image.at<float>(i,j));
-                p = convert_depth_to_point(j, i, depthvalue, camera_info);
-                if(!(p.z < 20 && p.y > 0)) {
-                    mask.at<int>(i,j) = 0;
-                } else {
-                    mask.at<int>(i,j) = 255;
+        std::unordered_map<int, int> barrel_centroid_indices;
+        std::unordered_map<int, int> mannequin_centroid_indices;
+        std::unordered_map<int, int> tyre_centroid_indices;
+
+
+        for (size_t i = 1; i < obstacle_types.size(); i++) {
+            if (obstacle_types[i] == "barrel") {
+                barrel_centroid_indices[i] = barrel_centroids.size();
+                barrel_centroids.push_back(Centroid3D());
+            } else if (obstacle_types[i] == "mannequin") {
+                mannequin_centroid_indices[i] = mannequin_centroids.size();
+                mannequin_centroids.push_back(Centroid3D());
+            } else if (obstacle_types[i] == "tyre") {
+                tyre_centroid_indices[i] = tyre_centroids.size();
+                tyre_centroids.push_back(Centroid3D());
+            }
+        }
+
+        for (int i = 0; i < depth_image.rows; i++) {
+            for (int j = 0; j < depth_image.cols; j++) {
+                int label = obstacle_labels.at<int>(i, j);
+                if (label > 0) { // Skip background
+                    double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
+                    if (std::isfinite(depthvalue) && depthvalue > 0) {
+                        Point p = convert_depth_to_point(j, i, depthvalue, camera_info);
+                        Point base_point = cloudPointToBaselink(p);
+                        
+                        if (obstacle_types[label] == "barrel") {
+                            mask_barrel.at<uchar>(i, j) = 255;
+                            
+                            barrel_centroids[barrel_centroid_indices[label]].addPoint(base_point.x, base_point.y, base_point.z);
+
+                        } else if (obstacle_types[label] == "tyre") {
+                            mask_tyre.at<uchar>(i, j) = 255;
+                            tyre_centroids[tyre_centroid_indices[label]].addPoint(base_point.x, base_point.y, base_point.z);
+
+                        } else if (obstacle_types[label] == "mannequin") {
+                            mask_mannequin.at<uchar>(i, j) = 255;
+                            mannequin_centroids[mannequin_centroid_indices[label]].addPoint(base_point.x, base_point.y, base_point.z);
+                        }
+                    }
                 }
             }
         }
-        // log("xyz");
+        for (auto& centroid : barrel_centroids) centroid.finalize();
+        for (auto& centroid : mannequin_centroids) centroid.finalize();
+        for (auto& centroid : tyre_centroids) centroid.finalize();
 
-        mask_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask).toImageMsg();
-        mask_pub->publish(*mask_msg);
-        log("published");
+        mask_barrel_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_barrel).toImageMsg();
+        mask_barrel_pub->publish(*mask_barrel_msg);
+
+        mask_mannequin_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_mannequin).toImageMsg();
+        mask_mannequin_pub->publish(*mask_mannequin_msg);
+
+        mask_tyre_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_tyre).toImageMsg();
+        mask_tyre_pub->publish(*mask_tyre_msg);
+        
+        publishCentroids(barrel_centroids, barrel_centroids_pub);
+        publishCentroids(mannequin_centroids, mannequin_centroids_pub);
+        publishCentroids(tyre_centroids, tyre_centroids_pub);
+
+        // sensor_msgs::msg::PointCloud2 cloud_msg;
+        // cloud_msg.header.stamp = rgb->header.stamp;
+        // cloud_msg.header.frame_id = camera_info->header.frame_id;
+
+        // cloud_msg.height = 1;
+        // cloud_msg.width = points.size() / 3;
+        // cloud_msg.fields.resize(3);
+        // cloud_msg.fields[0].name = "x";
+        // cloud_msg.fields[0].offset = 0;
+        // cloud_msg.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        // cloud_msg.fields[0].count = 1;
+        // cloud_msg.fields[1].name = "y";
+        // cloud_msg.fields[1].offset = 4;
+        // cloud_msg.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        // cloud_msg.fields[1].count = 1;
+        // cloud_msg.fields[2].name = "z";
+        // cloud_msg.fields[2].offset = 8;
+        // cloud_msg.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        // cloud_msg.fields[2].count = 1;
+
+        // cloud_msg.is_bigendian = false;
+        // cloud_msg.point_step = 12;
+        // cloud_msg.row_step = cloud_msg.point_step * cloud_msg.width;
+        // cloud_msg.is_dense = false;
+
+        // cloud_msg.data.resize(points.size() * sizeof(float));
+        // memcpy(&cloud_msg.data[0], points.data(), points.size() * sizeof(float));
+
+        // pointcloud_pub->publish(cloud_msg);
+        // log("published");
+    }
+    
+    // Modified to publish Point instead of PointStamped
+    void publishCentroids(const std::vector<Centroid3D>& centroids, 
+                        rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr publisher) {
+        for (const auto& centroid : centroids) {
+            if (centroid.point_count > 0) {
+                geometry_msgs::msg::Point point_msg;
+                point_msg.x = centroid.x;
+                point_msg.y = centroid.y;
+                point_msg.z = centroid.z;
+                publisher->publish(point_msg);
+            }
+        }
     }
 
     void timer_callback() {
@@ -179,24 +388,36 @@ private:
 
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_sub, depth_sub;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub;
-    
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
+
     bool rgb_recv;
     bool depth_recv;
     bool camera_info_recv;
+    bool odom_recv;
+
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_barrel_pub;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_tyre_pub;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_mannequin_pub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub;
     
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_pub;
-    
+    // Changed from PointStamped to Point
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr barrel_centroids_pub;
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr mannequin_centroids_pub;
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr tyre_centroids_pub;
+
     sensor_msgs::msg::Image::SharedPtr rgb_image_msg, depth_image_msg;
     sensor_msgs::msg::CameraInfo::SharedPtr camera_info_msg;
+    nav_msgs::msg::Odometry::SharedPtr odom_msg;
 
-    sensor_msgs::msg::Image::SharedPtr mask_msg;
+    sensor_msgs::msg::Image::SharedPtr mask_barrel_msg;
+    sensor_msgs::msg::Image::SharedPtr mask_tyre_msg;
+    sensor_msgs::msg::Image::SharedPtr mask_mannequin_msg;
 
     rclcpp::TimerBase::SharedPtr timer;
-    
+
     cv_bridge::CvImagePtr rgb_image_ptr, depth_image_ptr;
     cv::Mat rgb_image, depth_image;
     cv::Mat y_image, height_mask;
-    
 };
 
 int main(int argc, char** argv) {
