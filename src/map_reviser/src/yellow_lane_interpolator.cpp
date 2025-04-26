@@ -31,7 +31,7 @@ public:
 
     // Parameters
     min_cluster_size_ = this->declare_parameter<int>("min_cluster_size", 100);
-    max_distance_between_centroids_ = this->declare_parameter<double>("max_distance_between_centroids", 10.0);
+    max_distance_between_centroids_ = this->declare_parameter<double>("max_distance_between_centroids", 7.5);
     max_angle_deviation_ = this->declare_parameter<double>("max_angle_deviation", 40.0 * M_PI / 180.0); // degrees to radians
     max_distance_to_white_ = this->declare_parameter<double>("max_distance_to_white", 8.0);
     min_distance_to_white_ = this->declare_parameter<double>("min_distance_to_white", 3.0);

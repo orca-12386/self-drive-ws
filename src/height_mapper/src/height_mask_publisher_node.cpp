@@ -101,19 +101,22 @@ public:
         mask_barrel_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/barrel", 10);
         mask_mannequin_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/mannequin", 10);
         mask_tyre_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/tyre", 10);
+        mask_stop_sign_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/stop_sign", 10);
         pointcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/height_mask/pointcloud", 10);
 
         // Changed from PointStamped to Point publishers
         barrel_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/traffic_drum/coordinates", 10);
         mannequin_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/pedestrian/coordinates", 10);
         tyre_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/tyre/coordinates", 10);
+        stop_sign_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/stop_sign/coordinates", 10);
 
         timer = this->create_wall_timer(
             std::chrono::milliseconds(40), std::bind(&HeightMaskPublisherNode::timer_callback, this));
             
-        height_ranges["tyre"] = std::make_pair(0.1f, 0.5f);
-        height_ranges["barrel"] = std::make_pair(0.6f, 1.1f);
-        height_ranges["mannequin"] = std::make_pair(1.1f, 2.2f);
+        height_ranges["tyre"] = std::make_pair(0.1f, 0.6f);
+        height_ranges["barrel"] = std::make_pair(0.6f, 1.2f);
+        height_ranges["mannequin"] = std::make_pair(1.8f, 2.2f);
+        height_ranges["stop_sign"] = std::make_pair(1.4f, 1.8f);
     };
 
 private:
@@ -241,6 +244,7 @@ private:
         cv::Mat mask_barrel(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
         cv::Mat mask_tyre(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
         cv::Mat mask_mannequin(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
+        cv::Mat mask_stop_sign(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
         
         cv::Mat obstacle_labels;
         std::vector<float> max_obstacle_heights;
@@ -250,6 +254,7 @@ private:
         std::vector<float> points_barrel;
         std::vector<float> points_mannequin;
         std::vector<float> points_tyre;
+        std::vector<float> points_stop_sign;
         
         std::vector<std::string> obstacle_types(max_obstacle_heights.size(), "");
         for (size_t i = 1; i < max_obstacle_heights.size(); i++) {
@@ -262,16 +267,19 @@ private:
                 obstacle_types[i] = "barrel";
             } else if (max_height >= height_ranges["mannequin"].first && max_height <= height_ranges["mannequin"].second) {
                 obstacle_types[i] = "mannequin";
-            }
+            } else if (max_height >= height_ranges["stop_sign"].first && max_height <= height_ranges["stop_sign"].second) {
+                obstacle_types[i] = "stop_sign";}
         }
         
         std::vector<Centroid3D> barrel_centroids;
         std::vector<Centroid3D> mannequin_centroids;
         std::vector<Centroid3D> tyre_centroids;
+        std::vector<Centroid3D> stop_sign_centroids;
 
         std::unordered_map<int, int> barrel_centroid_indices;
         std::unordered_map<int, int> mannequin_centroid_indices;
         std::unordered_map<int, int> tyre_centroid_indices;
+        std::unordered_map<int, int> stop_sign_centroid_indices;
 
 
         for (size_t i = 1; i < obstacle_types.size(); i++) {
@@ -284,6 +292,9 @@ private:
             } else if (obstacle_types[i] == "tyre") {
                 tyre_centroid_indices[i] = tyre_centroids.size();
                 tyre_centroids.push_back(Centroid3D());
+            } else if (obstacle_types[i] == "stop_sign") {
+                stop_sign_centroid_indices[i] = stop_sign_centroids.size();
+                stop_sign_centroids.push_back(Centroid3D());
             }
         }
 
@@ -308,14 +319,18 @@ private:
                         } else if (obstacle_types[label] == "mannequin") {
                             mask_mannequin.at<uchar>(i, j) = 255;
                             mannequin_centroids[mannequin_centroid_indices[label]].addPoint(base_point.x, base_point.y, base_point.z);
-                        }
+                        } else if (obstacle_types[label] == "stop_sign") {
+                            mask_stop_sign.at<uchar>(i, j) = 255;
+                            stop_sign_centroids[stop_sign_centroid_indices[label]].addPoint(base_point.x, base_point.y, base_point.z);
                     }
                 }
             }
         }
+    }
         for (auto& centroid : barrel_centroids) centroid.finalize();
         for (auto& centroid : mannequin_centroids) centroid.finalize();
         for (auto& centroid : tyre_centroids) centroid.finalize();
+        for (auto& centroid : stop_sign_centroids) centroid.finalize();
 
         mask_barrel_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_barrel).toImageMsg();
         mask_barrel_pub->publish(*mask_barrel_msg);
@@ -325,10 +340,14 @@ private:
 
         mask_tyre_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_tyre).toImageMsg();
         mask_tyre_pub->publish(*mask_tyre_msg);
+
+        mask_stop_sign_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_stop_sign).toImageMsg();
+        mask_stop_sign_pub->publish(*mask_stop_sign_msg);
         
         publishCentroids(barrel_centroids, barrel_centroids_pub);
         publishCentroids(mannequin_centroids, mannequin_centroids_pub);
         publishCentroids(tyre_centroids, tyre_centroids_pub);
+        publishCentroids(stop_sign_centroids, stop_sign_centroids_pub);
 
         // sensor_msgs::msg::PointCloud2 cloud_msg;
         // cloud_msg.header.stamp = rgb->header.stamp;
@@ -398,12 +417,14 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_barrel_pub;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_tyre_pub;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_mannequin_pub;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_stop_sign_pub;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub;
     
     // Changed from PointStamped to Point
     rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr barrel_centroids_pub;
     rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr mannequin_centroids_pub;
     rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr tyre_centroids_pub;
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr stop_sign_centroids_pub;
 
     sensor_msgs::msg::Image::SharedPtr rgb_image_msg, depth_image_msg;
     sensor_msgs::msg::CameraInfo::SharedPtr camera_info_msg;
@@ -412,6 +433,7 @@ private:
     sensor_msgs::msg::Image::SharedPtr mask_barrel_msg;
     sensor_msgs::msg::Image::SharedPtr mask_tyre_msg;
     sensor_msgs::msg::Image::SharedPtr mask_mannequin_msg;
+    sensor_msgs::msg::Image::SharedPtr mask_stop_sign_msg;
 
     rclcpp::TimerBase::SharedPtr timer;
 

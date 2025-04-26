@@ -283,16 +283,16 @@ def generate_launch_description():
         #     executable='drum_detector_node',
         #     name='drum_detector_node'
         # ),
-        Node(
-            package='detective',
-            executable='pedestrian_detector_node',
-            name='pedestrian_detector_node'
-        ),
-        Node(
-            package='detective',
-            executable='stop_sign_detector_node',
-            name='stop_sign_detector_node'
-        ),
+        # Node(
+        #     package='detective',
+        #     executable='pedestrian_detector_node',
+        #     name='pedestrian_detector_node'
+        # ),
+        # Node(
+        #     package='detective',
+        #     executable='stop_sign_detector_node',
+        #     name='stop_sign_detector_node'
+        # ),
         Node(
             package='intersection_detector',
             executable='intersection_detector_node',
@@ -347,15 +347,24 @@ def generate_launch_description():
                 'pub_topic': '/odom'
             }]       
         ),
+        Node(
+            package='topic_remapper',
+            executable='goal_topic_remapper_node',
+            name='goal_topic_remapper_node',
+            parameters=[{
+                'default_sub_topic': '/goal_pose',
+                'pub_topic': '/move_base_simple/goal'
+            }]       
+        )
     ]
 
     launch_transforms =  [
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='static_transform_publisher',
-            arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom']
-        ),
+        # Node(
+        #     package='tf2_ros',
+        #     executable='static_transform_publisher',
+        #     name='static_transform_publisher',
+        #     arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom']
+        # ),
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -366,9 +375,20 @@ def generate_launch_description():
             package='tf_odom_link_base',
             executable='tf_odom',
             name='tf_odom'
+        ),
+        Node(
+            package='tf_odom_link_base',
+            executable='tf_map',
+            name='tf_map'
         )
     ]
-    
+    launch_height_mapper = [
+        Node(
+            package='height_mapper',
+            executable='height_mask_publisher_node',
+            name='height_mask_publisher_node'
+        )
+    ]
     launch_description = list()
 
     if SIM:
@@ -390,12 +410,13 @@ def generate_launch_description():
     
     launch_description.extend(launch_behaviour_manager)
   
-    # launch_description.extend(launch_detector)
+    launch_description.extend(launch_detector)
   
     launch_description.extend(launch_topic_remapper)
 
     launch_description.extend(launch_pose_publishers)
     launch_description.extend(launch_transforms)
+    launch_description.extend(launch_height_mapper)
 
 
     return LaunchDescription(launch_description)

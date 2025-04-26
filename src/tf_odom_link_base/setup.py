@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'tf_odom = tf_odom_link_base.tf_odom:main',
+            'tf_map = tf_odom_link_base.tf_map:main',
         ],
     },
 )

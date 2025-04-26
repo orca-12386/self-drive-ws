@@ -334,10 +334,10 @@ private:
         };
 
         detection_distance_limits = {
-            {"traffic_drum", 5},
+            {"traffic_drum", 10},
             {"stop_sign", 5},
-            {"pedestrian", 5},
-            {"tyre", 5}
+            {"pedestrian", 10},
+            {"tyre", 10}
         };
 
         for(auto& topic : detection_topics) {
