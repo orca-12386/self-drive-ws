@@ -304,6 +304,9 @@ private:
 
         int min_grid_x = grid_width, max_grid_x = 0;
         int min_grid_y = grid_height, max_grid_y = 0;
+
+        std::unordered_set<size_t> visited_indexes;
+
         for (auto it = begin (points); it != end (points); ++it) {
             // log_debug("y");
             //log_debug(std::string("iterator:")+std::to_string(it->x)+std::string(",")+std::to_string(it->y));
@@ -329,11 +332,16 @@ private:
                     max_grid_y = it->global_grid_y;
                 }
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
-                instant_map_msg->data[index] = 100;
-                log_odds_map[index] += log_odds_hit-log_odds_miss;
-                if(abs(log_odds_map[index]) > 100000) {
-                    log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*100000;
+                if(visited_indexes.find(index) == visited_indexes.end()) {
+                    /// not in set
+                    visited_indexes.insert(index);
+                    instant_map_msg->data[index] = 100;
+                    log_odds_map[index] += log_odds_hit-log_odds_miss;
+                    if(abs(log_odds_map[index]) > 100000) {
+                        log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*100000;
+                    }    
                 }
+                
             } else {
                 log("Assignment exceeds map dimensions");
             }
