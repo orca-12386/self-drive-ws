@@ -11,6 +11,7 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/point.hpp>  // Changed from point_stamped.hpp
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
@@ -102,9 +103,10 @@ public:
         mask_tyre_pub = this->create_publisher<sensor_msgs::msg::Image>("/height_mask/tyre", 10);
         pointcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/height_mask/pointcloud", 10);
 
-        barrel_centroids_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/detector/traffic_drum/coordinates", 10);
-        mannequin_centroids_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/detector/pedestrain/coordinates", 10);
-        tyre_centroids_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/detector/tire/coordinates", 10);
+        // Changed from PointStamped to Point publishers
+        barrel_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/traffic_drum/coordinates", 10);
+        mannequin_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/pedestrian/coordinates", 10);
+        tyre_centroids_pub = this->create_publisher<geometry_msgs::msg::Point>("/detector/tyre/coordinates", 10);
 
         timer = this->create_wall_timer(
             std::chrono::milliseconds(40), std::bind(&HeightMaskPublisherNode::timer_callback, this));
@@ -323,9 +325,10 @@ private:
 
         mask_tyre_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", mask_tyre).toImageMsg();
         mask_tyre_pub->publish(*mask_tyre_msg);
-        publishCentroids(barrel_centroids, barrel_centroids_pub, "base_link", rgb->header.stamp);
-        publishCentroids(mannequin_centroids, mannequin_centroids_pub, "base_link", rgb->header.stamp);
-        publishCentroids(tyre_centroids, tyre_centroids_pub, "base_link", rgb->header.stamp);
+        
+        publishCentroids(barrel_centroids, barrel_centroids_pub);
+        publishCentroids(mannequin_centroids, mannequin_centroids_pub);
+        publishCentroids(tyre_centroids, tyre_centroids_pub);
 
         // sensor_msgs::msg::PointCloud2 cloud_msg;
         // cloud_msg.header.stamp = rgb->header.stamp;
@@ -358,29 +361,19 @@ private:
         // pointcloud_pub->publish(cloud_msg);
         // log("published");
     }
-    void publishCentroids(const std::vector<Centroid3D>& centroids, rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr publisher,const std::string& frame_id,const builtin_interfaces::msg::Time& timestamp) {
-
-        geometry_msgs::msg::PoseArray pose_array;
-        pose_array.header.frame_id = frame_id;
-        pose_array.header.stamp = timestamp;
-        
+    
+    // Modified to publish Point instead of PointStamped
+    void publishCentroids(const std::vector<Centroid3D>& centroids, 
+                        rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr publisher) {
         for (const auto& centroid : centroids) {
             if (centroid.point_count > 0) {
-                geometry_msgs::msg::Pose pose;
-                pose.position.x = centroid.x;
-                pose.position.y = centroid.y;
-                pose.position.z = centroid.z;
-                
-                pose.orientation.x = 0.0;
-                pose.orientation.y = 0.0;
-                pose.orientation.z = 0.0;
-                pose.orientation.w = 1.0;
-                
-                pose_array.poses.push_back(pose);
+                geometry_msgs::msg::Point point_msg;
+                point_msg.x = centroid.x;
+                point_msg.y = centroid.y;
+                point_msg.z = centroid.z;
+                publisher->publish(point_msg);
             }
         }
-        
-        publisher->publish(pose_array);
     }
 
     void timer_callback() {
@@ -406,9 +399,11 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_tyre_pub;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mask_mannequin_pub;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub;
-    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr barrel_centroids_pub;
-    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr mannequin_centroids_pub;
-    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr tyre_centroids_pub;
+    
+    // Changed from PointStamped to Point
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr barrel_centroids_pub;
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr mannequin_centroids_pub;
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr tyre_centroids_pub;
 
     sensor_msgs::msg::Image::SharedPtr rgb_image_msg, depth_image_msg;
     sensor_msgs::msg::CameraInfo::SharedPtr camera_info_msg;
