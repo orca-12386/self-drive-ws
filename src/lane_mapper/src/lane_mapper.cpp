@@ -361,15 +361,16 @@ private:
                     max_grid_y = it->global_grid_y;
                 }
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
-                // if(visited_indexes.find(index) == visited_indexes.end()) {
-                    /// not in set
-                    // visited_indexes.insert(index);
+                    if(visited_indexes.find(index) == visited_indexes.end()) {
+                        // not in set
+                        visited_indexes.insert(index);
+                        log_odds_map[index] -= log_odds_miss;
+                    }
                     instant_map_msg->data[index] = 100;
-                    log_odds_map[index] += log_odds_hit-log_odds_miss;
+                    log_odds_map[index] += log_odds_hit;
                     if(abs(log_odds_map[index]) > 5) {
                         log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*5;    
                     }
-                // } 
             } else {
                 log("Assignment exceeds map dimensions");
             }
