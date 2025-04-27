@@ -68,7 +68,7 @@ class LaneChange(Node):
         Subscription.create_subscriptions(subscription_info)
 
         publisher_info = {
-            "goal_pose": ["goal_pose", PoseStamped],
+            "goal_pose": ["move_base_simple/goal", PoseStamped],
             "lane_change_status": ["lane_change_status", LaneChangeStatus]
         }
         Publisher.create_publishers(publisher_info)

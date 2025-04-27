@@ -45,13 +45,24 @@ ament_target_dependencies(odom_topic_remapper_node
   geometry_msgs
 )
 
+add_executable(goal_topic_remapper_node src/goal_topic_remapper_node.cpp)
+ament_target_dependencies(goal_topic_remapper_node
+  rclcpp
+  std_msgs
+  nav_msgs
+  geometry_msgs
+)
+
 target_link_libraries(motion_control_topic_remapper_node "${cpp_typesupport_target}")
 target_link_libraries(odom_topic_remapper_node "${cpp_typesupport_target}")
+target_link_libraries(goal_topic_remapper_node "${cpp_typesupport_target}")
+
 
 # Install the executable
 install(TARGETS
   motion_control_topic_remapper_node
   odom_topic_remapper_node
+  goal_topic_remapper_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
