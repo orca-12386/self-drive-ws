@@ -35,20 +35,10 @@ ament_target_dependencies(lane_mapper_node
   cv_bridge
 )
 
-add_executable(lane_mask_publisher_node src/lane_mask_publisher_node.cpp)
-ament_target_dependencies(lane_mask_publisher_node
-  rclcpp
-  sensor_msgs
-  std_msgs
-  nav_msgs
-  cv_bridge
-  OpenCV
-)
 
 # Install the executable
 install(TARGETS
   lane_mapper_node
-  lane_mask_publisher_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
