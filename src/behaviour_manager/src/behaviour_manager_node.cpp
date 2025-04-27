@@ -96,22 +96,22 @@ private:
         bool prev_detection_exists = get_latest_detection(prev_detection);
         bool is_not_previous_detection = true;
         if(prev_detection_exists) {
-            is_not_previous_detection = !(det->validate_distance(1, prev_detection->detection_location));
+            is_not_previous_detection = !(det->validate_distance(2, prev_detection->detection_location));
         }
 
         bool is_in_detection_range = det->validate_distance(this->distance_threshold, odometry_location);
         
         if(!is_not_previous_detection) {
-            RCLCPP_INFO(node->get_logger(), "Same");
+            // RCLCPP_INFO(node->get_logger(), "Same");
         }
         if(!is_in_detection_range) {
-            RCLCPP_INFO(node->get_logger(), "not in range");
+            // RCLCPP_INFO(node->get_logger(), "not in range");
         }
 
         bool conditions = true;
         conditions = conditions && is_not_previous_detection;
         conditions = conditions && is_in_detection_range;
-        RCLCPP_INFO(node->get_logger(), std::string(std::string("Distance: ")+std::to_string(det->distance)).c_str());
+        // RCLCPP_INFO(node->get_logger(), std::string(std::string("Distance: ")+std::to_string(det->distance)).c_str());
         if(conditions) {
             add_detection(det);
             RCLCPP_INFO(node->get_logger(), "Added");
@@ -376,7 +376,7 @@ private:
         // straight: 0
         // left: 2
         // right: 1
-        turn_sequence = {1,1,0,2};
+        turn_sequence = {1,0,2};
         int current_turn_index = 0;
     }
 
@@ -642,7 +642,7 @@ keep
     int mode;
     
     int current_turn_index;
-    std::array<int, 4> turn_sequence;
+    std::array<int, 3> turn_sequence;
 };
 
 

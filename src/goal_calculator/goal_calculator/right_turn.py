@@ -114,6 +114,13 @@ class RightTurnNode(Node):
         fx, fy = math.cos(yaw), math.sin(yaw)  
 
         all_directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+        new_directions = list()
+        skip_dist = 1.5 # in metres
+        skip_dist = skip_dist / self.map_resolution # grid coords
+        for i in range(2, int(skip_dist)+1):
+            for j in range(len(all_directions)):
+                new_directions.append((all_directions[j][0]*i, all_directions[j][1]*i))
+        all_directions.extend(new_directions)
         
         directions = []
         for dx, dy in all_directions:
@@ -216,6 +223,8 @@ class RightTurnNode(Node):
 
             self.publish_goal()
 
+            rate = self.create_rate(5)
+
             while rclpy.ok():
                 if self.goal_reached():
                     self.get_logger().info("Goal Reached")
@@ -224,7 +233,7 @@ class RightTurnNode(Node):
                     result.success = True
                     return result
                 self.publish_goal()
-                asyncio.sleep(0.1)
+                rate.sleep()
 
         except Exception as e:
             self.get_logger().error(f"Error: {e}")

@@ -198,7 +198,6 @@ private:
 
     void toggle_lane_follow(const std::shared_ptr<interfaces::srv::LaneFollowToggle::Request> request, std::shared_ptr<interfaces::srv::LaneFollowToggle::Response> response) {
         RCLCPP_INFO(this->get_logger(), "toggling lane follow");
-        this->running = request->toggle;
         if (request->toggle) {
             if (!running) {
                 this->start = true;
@@ -209,14 +208,13 @@ private:
                     std::chrono::milliseconds(100), std::bind(&LaneFollowerNode::timer_callback, this));
                 log("Timer created");
             }
-            running = true;
         } else {
             if (running) {
                 timer->cancel();
                 log("Cancelled timer");
             }
-            running = false;
         }
+        this->running = request->toggle;
         response->success = true;
     }
 
@@ -381,6 +379,9 @@ private:
     }
 
     void publish_goal(const nav_msgs::msg::Odometry::SharedPtr odom, const nav_msgs::msg::OccupancyGrid::SharedPtr map1, const nav_msgs::msg::OccupancyGrid::SharedPtr map2) {
+        if(!running) {
+            return;
+        }
         std::array<double, 2> bot_position = {odom->pose.pose.position.x, odom->pose.pose.position.y};
         std::array<int, 2> bot_position_grid = convert_to_grid_coords(bot_position, map1);
         if(this->start) {
@@ -420,6 +421,9 @@ private:
         goal_pose_msg->pose.position.y = goal[1];
         goal_pose_msg->pose.orientation.z = sin(average_orientation / 2);
         goal_pose_msg->pose.orientation.w = cos(average_orientation / 2);
+        if(!running) {
+            return;
+        }
         if(calculate_goal_angle(goal, goals) > 100) {
             goal_pub->publish(*goal_pose_msg);            
             if(goals.size() <= 1) {
