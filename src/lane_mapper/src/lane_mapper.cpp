@@ -24,6 +24,46 @@
 #include <cmath>
 
 
+#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <nav_msgs/msg/occupancy_grid.hpp>
+
+
+typedef struct Point {
+    double x;
+    double y;
+    double z;
+    double local_grid_x;
+    double local_grid_y;
+    int global_grid_x;
+    int global_grid_y;
+} Point;
+
+
+bool isPointInConvexPolygon(const Point& point, const std::vector<Point>& polygon) {
+    int n = polygon.size();
+    
+    // Need at least 3 points to form a polygon
+    if (n < 3) return false;
+    
+    // Check if point is on the same side of all edges
+    for (int i = 0; i < n; i++) {
+        const Point& p1 = polygon[i];
+        const Point& p2 = polygon[(i + 1) % n];
+        
+        // Calculate the cross product to determine side
+        double crossProduct = (p2.global_grid_x - p1.global_grid_x) * (point.global_grid_y - p1.global_grid_y) - (p2.global_grid_y - p1.global_grid_y) * (point.global_grid_x - p1.global_grid_x);
+        
+        // If point is on the wrong side of any edge, it's outside
+        if (crossProduct > 0) return false;
+
+    }
+    
+    return true;
+}
+
+
 class Timer {
 public:
     Timer(const std::string& s) : name(s) {
@@ -137,8 +177,8 @@ public:
         full_map_msg->info.origin.position.z = 0.0;
         full_map_msg->info.origin.orientation.w = 1.0;
 
-        timer = this->create_wall_timer(
-            std::chrono::milliseconds(50), std::bind(&LaneMapperNode::timer_callback, this));
+        // timer = this->create_wall_timer(
+        //     std::chrono::milliseconds(50), std::bind(&LaneMapperNode::timer_callback, this));
         
     };
 
@@ -148,6 +188,7 @@ private:
     void depthImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
         this->depth_image_msg = msg;
         depth_recv = true;
+        timer_callback();
     }
 
     void maskImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
@@ -176,18 +217,6 @@ private:
     void log(std::string str) {
         RCLCPP_INFO(this->get_logger(), str.c_str());
     }
-
-    // Points
-
-    typedef struct Point {
-        double x;
-        double y;
-        double z;
-        double local_grid_x;
-        double local_grid_y;
-        int global_grid_x;
-        int global_grid_y;
-    } Point;
 
     Point convert_depth_to_point(const cv::Point& location, const double& depth, const sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
         double fx = camera_info->k[0]; 
@@ -262,8 +291,8 @@ private:
 
         points.clear();
         for (const auto& pt : locations) {
-            double depth = static_cast<double>(depth_image.at<float>(pt.y, pt.x)); // Access color pixel
-            Point p = convert_depth_to_point(pt, depth, camera_info);
+            double d = static_cast<double>(depth_image.at<float>(pt.y, pt.x)); // Access color pixel
+            Point p = convert_depth_to_point(pt, d, camera_info);
             if(p.y < y_threshold && p.z<z_threshold) {
                 points.push_back(p);
             }
@@ -332,16 +361,15 @@ private:
                     max_grid_y = it->global_grid_y;
                 }
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
-                if(visited_indexes.find(index) == visited_indexes.end()) {
+                // if(visited_indexes.find(index) == visited_indexes.end()) {
                     /// not in set
-                    visited_indexes.insert(index);
+                    // visited_indexes.insert(index);
                     instant_map_msg->data[index] = 100;
                     log_odds_map[index] += log_odds_hit-log_odds_miss;
-                    if(abs(log_odds_map[index]) > 100000) {
-                        log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*100000;
-                    }    
-                }
-                
+                    if(abs(log_odds_map[index]) > 5) {
+                        log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*5;    
+                    }
+                // } 
             } else {
                 log("Assignment exceeds map dimensions");
             }
@@ -350,19 +378,68 @@ private:
 
         log_debug(t6.log());
 
+        Timer t8 = Timer("ground");
+
+        std::vector<Point> polygon_corners;
+        
+        float value;
+        float goodvalue;
+        int jlog;
+        for(int i = 0;i<depth_image.rows;i++) {
+            goodvalue = z_threshold;
+            for(int j = 0;j<depth_image.cols;j++) {
+                jlog = j;
+                value = depth_image.at<float>(i, j);
+                if((!cvIsNaN(value) && !cvIsInf(value))) {
+                    goodvalue = value;
+                    break;
+                }
+            }
+            if(goodvalue < z_threshold) {
+                double d = static_cast<double>(value); // Access color pixel
+                Point p = convert_depth_to_point(cv::Point(jlog, i), d, camera_info);    
+                polygon_corners.push_back(p);
+                Point p2 = convert_depth_to_point(cv::Point(depth_image.cols-1, i), d, camera_info);
+                polygon_corners.push_back(p2);
+                break;
+            }
+        }
+    
+        Point p3 = convert_depth_to_point(cv::Point(depth_image.cols-1, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, depth_image.cols-1)), camera_info);
+        Point p4 = convert_depth_to_point(cv::Point(0, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, 0)), camera_info);
+        polygon_corners.push_back(p3);
+        polygon_corners.push_back(p4);
+
+        for (auto it = begin (polygon_corners); it != end (polygon_corners); ++it) {
+            convert_to_grid_coords(*it, 0, 0);
+            rotate_local_grid(*it, yaw);
+            get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
+        }
+        
+        log_debug(t8.log());
+
+        Timer t9 = Timer("polygon");
+
+        Point p;
         for(int i = min_grid_y; i<max_grid_y ;i++) {
             for(int j = min_grid_x;j<max_grid_x;j++) {
-                size_t index = (i*grid_width)+j;
-                log_odds_map[index] += log_odds_miss;
-                if(log_odds_map[index] >= log_odds_mark) {
-                    full_map_msg->data[index] = 100;
-                } else if(log_odds_map[index] > log_odds_miss) {
-                    full_map_msg->data[index] = -1;
-                } else {
-                    full_map_msg->data[index] = 0;
+                p.global_grid_x = j;
+                p.global_grid_y = i;
+                if(isPointInConvexPolygon(p, polygon_corners)) {
+                    size_t index = (i*grid_width)+j;
+                    log_odds_map[index] += log_odds_miss;
+                    if(log_odds_map[index] >= log_odds_mark) {
+                        full_map_msg->data[index] = 100;
+                    } else if(log_odds_map[index] > log_odds_miss) {
+                        full_map_msg->data[index] = -1;
+                    } else {
+                        full_map_msg->data[index] = 0;
+                    }    
                 }
             }
         }
+
+        log_debug(t9.log());
 
         Timer t7 = Timer("create and publish");
 
