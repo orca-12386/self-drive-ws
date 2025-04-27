@@ -61,6 +61,45 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(robot_file)
             )
         ]
+        
+        pointcloud_sim_tf = [
+            Node(
+                package='transforms',
+                executable='sim_odom_pc',
+                name='pointcloud_transformer_simulation',
+                parameters=[{
+                    'pointcloud_topic': '/zed_node/stereocamera/points',
+                    'target_frame': 'map',
+
+                }]
+                )
+        ]
+        
+        launch_transforms =  [
+            # Node(
+            #     package='tf2_ros',
+            #     executable='static_transform_publisher',
+            #     name='static_transform_publisher',
+            #     arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom']
+            # ),
+            Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                name='static_transform_publisher',
+                arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'link_base']
+            ),
+            Node(
+                package='tf_odom_link_base',
+                executable='tf_odom',
+                name='tf_odom'
+            ),
+            Node(
+                package='tf_odom_link_base',
+                executable='tf_map',
+                name='tf_map'
+            )
+        ]
+
     else:
         # Define arguments for the included launch files
         sensor_hostname = "os-122220002210.local"
@@ -82,9 +121,13 @@ def generate_launch_description():
 
         dlo_dir= get_package_share_directory('direct_lidar_odometry')
 
+        transforms_dir = get_package_share_directory('transforms')
+
         driver_launch = ExecuteProcess(
             cmd=['ros2', 'launch', 'ouster_ros', 'sensor.launch.xml', f'sensor_hostname:={sensor_hostname}'],
-            output='screen'
+            output='screen',
+            respawn=True,
+            respawn_delay=2.0
         )
 
         dlo_launch = IncludeLaunchDescription(
@@ -96,26 +139,62 @@ def generate_launch_description():
             }.items()
         )
 
+        transforms_launch  = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(transforms_dir,'launch','transforms.launch.py'))
+        )
+
         zed_no_tf_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
             launch_arguments={
                 "camera_model": "zed2i"
             }.items()
         )
+        
+        pointcloud_tf = [
+            Node(
+                package='transforms',
+                executable='odom_pc',
+                name='pointcloud_transformer',
+                parameters=[{
+                    'pointcloud_topic': '/zed/zed_node/point_cloud/cloud_registered',
+                    'target_frame': 'robot/odom'
+                }])
+        ]
 
-        # transform_launch = IncludeLaunchDescription(
-        #     PythonLaunchDescriptionSource(os.path.join(transformer_dir, 'launch', 'transform.launch.py'))
-        # )
 
+        lidar_tf = [
+            Node(
+                package='transforms',
+                executable='lidar_tf',
+                name='ouster_transformer',
+                parameters=[{
+                    'mask_sub_topic': '/mask/white',
+                    'map_pub_topic': '/map/white'
+                }])
+        ]
+
+        zed_tf = [
+            Node(
+                package='transforms',
+                executable='zed_tf',
+                name='zed_imu_transformer',
+                parameters=[{
+                    'mask_sub_topic': '/mask/white',
+                    'map_pub_topic': '/map/white'
+                }])
+        ]
+
+        
         launch_sensors = [
+            transforms_launch,
             declare_sensor_hostname,
             declare_pointcloud_topic,
             declare_imu_topic,
             driver_launch,
             dlo_launch,
             zed_no_tf_launch,
-            # transform_launch,
         ]
+
 
     launch_motion_control = [
         IncludeLaunchDescription(
@@ -125,7 +204,7 @@ def generate_launch_description():
 
     launch_lane_masker = [
         Node(
-            package='lane_mapper',
+            package='lane_mask_publisher',
             executable='lane_mask_publisher_node',
             name='lane_mask_publisher_node',
             parameters=[{
@@ -343,7 +422,7 @@ def generate_launch_description():
             executable='odom_topic_remapper_node',
             name='odom_topic_remapper_node',
             parameters=[{
-                'default_sub_topic': '/zed/zed_node/odom',
+                'default_sub_topic': '/dlo/odom_node/odom',
                 'pub_topic': '/odom'
             }]       
         ),
@@ -358,30 +437,6 @@ def generate_launch_description():
         )
     ]
 
-    launch_transforms =  [
-        # Node(
-        #     package='tf2_ros',
-        #     executable='static_transform_publisher',
-        #     name='static_transform_publisher',
-        #     arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom']
-        # ),
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='static_transform_publisher',
-            arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'link_base']
-        ),
-        Node(
-            package='tf_odom_link_base',
-            executable='tf_odom',
-            name='tf_odom'
-        ),
-        Node(
-            package='tf_odom_link_base',
-            executable='tf_map',
-            name='tf_map'
-        )
-    ]
     launch_height_mapper = [
         Node(
             package='height_mapper',
@@ -393,7 +448,12 @@ def generate_launch_description():
 
     if SIM:
         launch_description.extend(launch_world_robot)
+        launch_description.extend(pointcloud_sim_tf)
+        launch_description.extend(launch_transforms)
     else:
+        launch_description.extend(pointcloud_tf)
+        launch_description.extend(zed_tf)
+        launch_description.extend(lidar_tf)
         launch_description.extend(launch_sensors)
 
 
@@ -415,7 +475,6 @@ def generate_launch_description():
     launch_description.extend(launch_topic_remapper)
 
     launch_description.extend(launch_pose_publishers)
-    launch_description.extend(launch_transforms)
     launch_description.extend(launch_height_mapper)
 
 
