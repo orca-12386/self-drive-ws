@@ -62,6 +62,40 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(robot_file)
             )
         ]
+        
+        pointcloud_sim_tf = [
+            Node(
+                package='transforms',
+                executable='sim_odom_pc',
+                name='pointcloud_transformer_simulation',
+                parameters=[{
+                    'pointcloud_topic': '/zed_node/stereocamera/points',
+                    'target_frame': 'map',
+
+                }]
+                )
+        ]
+        
+        launch_transforms =  [
+            Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                name='static_transform_publisher',
+                arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom']
+            ),
+            Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                name='static_transform_publisher',
+                arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'link_base']
+            ),
+            Node(
+                package='tf_odom_link_base',
+                executable='tf_odom',
+                name='tf_odom'
+            )
+        ]
+
     else:
         # Define arguments for the included launch files
         sensor_hostname = "os-122220002210.local"
@@ -111,11 +145,42 @@ def generate_launch_description():
                 "camera_model": "zed2i"
             }.items()
         )
+        
+        pointcloud_tf = [
+            Node(
+                package='transforms',
+                executable='odom_pc',
+                name='pointcloud_transformer',
+                parameters=[{
+                    'pointcloud_topic': '/zed/zed_node/point_cloud/cloud_registered',
+                    'target_frame': 'robot/odom'
+                }])
+        ]
 
-        # transform_launch = IncludeLaunchDescription(
-        #     PythonLaunchDescriptionSource(os.path.join(transformer_dir, 'launch', 'transform.launch.py'))
-        # )
 
+        lidar_tf = [
+            Node(
+                package='transforms',
+                executable='lidar_tf',
+                name='ouster_transformer',
+                parameters=[{
+                    'mask_sub_topic': '/mask/white',
+                    'map_pub_topic': '/map/white'
+                }])
+        ]
+
+        zed_tf = [
+            Node(
+                package='transforms',
+                executable='zed_tf',
+                name='zed_imu_transformer',
+                parameters=[{
+                    'mask_sub_topic': '/mask/white',
+                    'map_pub_topic': '/map/white'
+                }])
+        ]
+
+        
         launch_sensors = [
             transforms_launch,
             declare_sensor_hostname,
@@ -124,8 +189,6 @@ def generate_launch_description():
             driver_launch,
             dlo_launch,
             zed_no_tf_launch,
-
-            # transform_launch,
         ]
 
     launch_motion_control = [
@@ -134,9 +197,10 @@ def generate_launch_description():
         )
     ]
 
+
     launch_lane_masker = [
         Node(
-            package='lane_mapper',
+            package='lane_mask_publisher',
             executable='lane_mask_publisher_node',
             name='lane_mask_publisher_node',
             parameters=[{
@@ -176,106 +240,36 @@ def generate_launch_description():
             name='nearest_lane_mapper_node'
         )
     ]
-
-    #NECESSARY TRANSFORMS, only pointcloud_tf is required when running in SIM
-    pointcloud_tf = [
-        Node(
-            package='transforms',
-            executable='odom_pc',
-            name='pointcloud_transformer',
-            parameters=[{
-                'pointcloud_topic': '/zed/zed_node/point_cloud/cloud_registered',
-                'target_frame': 'robot/odom'
-            }])
-    ]
-
-    pointcloud_sim_tf = [
-        Node(
-            package='transforms',
-            executable='sim_odom_pc',
-            name='pointcloud_transformer_simulation',
-            parameters=[{
-                'pointcloud_topic': '/zed_node/stereocamera/points',
-                'target_frame': 'map',
-
-            }]
-            )
-    ]
-
-    #NOde to republish whatever comes from ouster and send them to dlo
-
-    lidar_tf = [
-        Node(
-            package='transforms',
-            executable='lidar_tf',
-            name='ouster_transformer',
-            parameters=[{
-                'mask_sub_topic': '/mask/white',
-                'map_pub_topic': '/map/white'
-            }])
-    ]
-
-    zed_tf = [
-        Node(
-            package='transforms',
-            executable='zed_tf',
-            name='zed_imu_transformer',
-            parameters=[{
-                'mask_sub_topic': '/mask/white',
-                'map_pub_topic': '/map/white'
-            }])
-    ]
-
-            #     parameters=[{
-            #     'map1_sub_topic': '/map/white/local/near',
-            #     'map2_sub_topic': '/map/yellow/local/interp',
-            #     'map_pub_topic': '/map/current',
-            #     'assemble_mode': 1
-            # }]
-
-    #VISION MAPPER
-
-    mask_sub_topic = "/mask/white"
-    mask_pub_topic  = "/map/white"
     
-    #In simulation the point cloud transformed is on a slightly sifferent topic
-    pc_odom = "/nav/odom/point_cloud"
-    pc_base = "/nav/base_link/point_cloud"
-
-    if(SIM):
-        pc_topic = pc_odom
-    else:
-        pc_topic = "/nav/point_cloud"
-
-
     launch_lane_mapper = [
         Node(
-            package='vision',
-            executable='pc_mapper_node',
+            package='lane_mapper',
+            executable='lane_mapper_node',
             name='lane_mapper_node',
             parameters=[{
+                'depth_sub_topic': depth_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
                 'mask_sub_topic': '/mask/white',
-                'map_pub_topic': '/map/white',
-                'pc_topic':pc_topic
+                'map_pub_topic': '/map/white'
             }]
         ),
         Node(
-            package='vision',
-            executable='pc_mapper_node',
-            name='yellow_lane_mapper',
+            package='lane_mapper',
+            executable='lane_mapper_node',
+            name='lane_mapper_node',
             parameters=[{
+                'depth_sub_topic': depth_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
                 'mask_sub_topic': '/mask/yellow',
-                'map_pub_topic': '/map/yellow',
-                'pc_topic':pc_topic
+                'map_pub_topic': '/map/yellow'
             }]
         ),
-        # Node(
-        #     package='lane_mapper',
-        #     executable='nearest_lane_mapper_node',
-        #     name='nearest_lane_mapper_node'
-        # )
+        Node(
+            package='lane_mapper',
+            executable='nearest_lane_mapper_node',
+            name='nearest_lane_mapper_node'
+        )
     ]
-
     
     interpolation = [
         Node(
@@ -283,26 +277,6 @@ def generate_launch_description():
             executable='linear_interp',
             name='linear_interp',
         )
-    ]
-
-    vision_lane_mask =  [
-        Node(
-            package='filterer',
-            executable='lane_filter_node',
-            name='lane_filter_node',
-            output='screen',
-            parameters=[{
-                'higher_h': 180,
-                'higher_s': 60,
-                'higher_v': 255,
-                'lower_h': 0,
-                'lower_s': 0,
-                'lower_v': 200,
-                'target_v': 140,
-                'sim' : SIM,
-                'mask_pub_topic':'/mask/white'
-            }]
-        ),
     ]
 
     launch_map_ensemble = [
@@ -410,16 +384,16 @@ def generate_launch_description():
         #     executable='drum_detector_node',
         #     name='drum_detector_node'
         # ),
-        Node(
-            package='detective',
-            executable='pedestrian_detector_node',
-            name='pedestrian_detector_node'
-        ),
-        Node(
-            package='detective',
-            executable='stop_sign_detector_node',
-            name='stop_sign_detector_node'
-        ),
+        # Node(
+        #     package='detective',
+        #     executable='pedestrian_detector_node',
+        #     name='pedestrian_detector_node'
+        # ),
+        # Node(
+        #     package='detective',
+        #     executable='stop_sign_detector_node',
+        #     name='stop_sign_detector_node'
+        # ),
         Node(
             package='intersection_detector',
             executable='intersection_detector_node',
@@ -470,29 +444,9 @@ def generate_launch_description():
             executable='odom_topic_remapper_node',
             name='odom_topic_remapper_node',
             parameters=[{
-                'default_sub_topic': '/zed/zed_node/odom',
+                'default_sub_topic': '/dlo/odom_node/odom',
                 'pub_topic': '/odom'
             }]       
-        ),
-    ]
-
-    launch_transforms =  [
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='static_transform_publisher',
-            arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom']
-        ),
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='static_transform_publisher',
-            arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'link_base']
-        ),
-        Node(
-            package='tf_odom_link_base',
-            executable='tf_odom',
-            name='tf_odom'
         )
     ]
         
@@ -500,36 +454,32 @@ def generate_launch_description():
 
     if SIM:
         launch_description.extend(launch_world_robot)
-        print("##### LAUNCHING SIMULATION CONFIG: #########")
         launch_description.extend(pointcloud_sim_tf)
         launch_description.extend(launch_transforms)
     else:
         launch_description.extend(pointcloud_tf)
         launch_description.extend(zed_tf)
         launch_description.extend(lidar_tf)
-        launch_description.extend(vision_lane_mask)
         launch_description.extend(launch_sensors)
 
     if MOVEMENT:
         launch_description.extend(launch_motion_control)
 
-    # launch_description.extend(launch_lane_masker)
+    launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)
-    # launch_description.extend(interpolation)
-    # launch_description.extend(launch_local_map)
-    # launch_description.extend(launch_map_ensemble)
-    
+    launch_description.extend(interpolation)
+    launch_description.extend(launch_local_map)
+    launch_description.extend(launch_map_ensemble)    
 
-    # launch_description.extend(launch_goal_calculators)
+    launch_description.extend(launch_goal_calculators)
     
-    # launch_description.extend(launch_behaviour_manager)
+    launch_description.extend(launch_behaviour_manager)
   
-    # launch_description.extend(launch_detector)
+    launch_description.extend(launch_detector)
   
-    # launch_description.extend(launch_topic_remapper)
+    launch_description.extend(launch_topic_remapper)
 
-    # launch_description.extend(launch_pose_publishers)
-    # launch_description.extend(launch_transforms)
+    launch_description.extend(launch_pose_publishers)
 
 
     return LaunchDescription(launch_description)
