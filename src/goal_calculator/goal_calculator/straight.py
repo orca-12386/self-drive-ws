@@ -22,7 +22,7 @@ class StraightActionServer(Node):
         self._action_server = ActionServer(
             self,
             Straight,
-            'straight',
+            'StraightTurn',
             self.execute_callback,
             goal_callback=self.goal_callback
         )

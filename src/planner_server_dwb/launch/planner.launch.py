@@ -7,8 +7,8 @@ nav2_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'con
 controller_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','controller.yaml')
 bt_navigator_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','bt_navigator.yaml')
 recovery_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','recovery.yaml')
-smoother_yaml = os.path.join(get_package_share_directory('planner_server'), 'config','smoother.yaml')
-amcl_yaml = os.path.join(get_package_share_directory('planner_server'), 'config','amcl.yaml')
+smoother_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','smoother.yaml')
+amcl_yaml = os.path.join(get_package_share_directory('planner_server_dwb'), 'config','amcl.yaml')
 
 def generate_launch_description():
     return LaunchDescription([

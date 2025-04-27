@@ -14,7 +14,7 @@ from std_msgs.msg import Bool as LaneChangeStatus
 
 # These are your package-specific imports.
 from goal_calculator.ros2_wrapper import Message, Subscription, Publisher, Config, NodeGlobal
-import goal_calculator.lane_follow as util
+import goal_calculator.util as util
 from sklearn.cluster import DBSCAN
 from scipy.spatial import cKDTree
 import statistics
