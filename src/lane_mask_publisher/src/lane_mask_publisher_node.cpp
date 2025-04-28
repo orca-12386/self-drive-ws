@@ -73,24 +73,28 @@ private:
 
     void declare_parameters() {
         this->declare_parameter("sim", false);
-        this->declare_parameter("depth_sub_topic", "/depth/image");
-        this->declare_parameter("color_sub_topic", "/color/image");
+        this->declare_parameter("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
+        this->declare_parameter("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
+        
     }
 
     void load_parameters() {
         sim = this->get_parameter("sim").as_bool();
 
         // Hardcoded mask ranges depending on sim mode
-        yellow_mask_lower = cv::Scalar(0, 100, 100);
-        yellow_mask_upper = cv::Scalar(210, 255, 255);
+
 
         if (sim) {
             white_mask_rgb_lower = cv::Scalar(230, 230, 230);
             white_mask_rgb_upper = cv::Scalar(255, 255, 255);
+            yellow_mask_lower = cv::Scalar(0, 69, 41);
+            yellow_mask_upper = cv::Scalar(179, 255, 255);
             target_v = -1;  // No brightness adjustment
         } else {
             white_mask_hsv_lower = cv::Scalar(0, 0, 180);
             white_mask_hsv_upper = cv::Scalar(180, 80, 255);
+            yellow_mask_lower = cv::Scalar(0, 69, 41);
+            yellow_mask_upper = cv::Scalar(179, 255, 255);
             target_v = 140; // Target brightness value
         }
     }

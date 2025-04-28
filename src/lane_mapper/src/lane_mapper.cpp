@@ -94,15 +94,19 @@ public:
     LaneMapperNode() : rclcpp::Node("lane_mapper_node") {
         RCLCPP_INFO(this->get_logger(), "lane_mapper_node started");
 
-        this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
-        this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
-        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
-        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
-
-        this->declare_parameter("map_pub_topic", rclcpp::PARAMETER_STRING);
-        this->declare_parameter("mask_sub_topic", rclcpp::PARAMETER_STRING);
-        std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
+        this->declare_parameter<std::string>("mask_sub_topic", "/mask/white");
+        this->declare_parameter<std::string>("map_pub_topic", "/map/white");
+        this->declare_parameter<std::string>("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
+        this->declare_parameter<std::string>("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
+        this->declare_parameter<std::string>("camera_info_sub_topic", "/zed/zed_node/rgb/camera_info");
+        
+        // Now retrieve them
         std::string mask_sub_topic = this->get_parameter("mask_sub_topic").as_string();
+        std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
+        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
+        std::string color_sub_topic = this->get_parameter("color_sub_topic").as_string();
+        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
+        
 
         // Initialise subscriptions
 
