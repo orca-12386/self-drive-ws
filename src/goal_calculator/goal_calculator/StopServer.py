@@ -4,6 +4,8 @@ from rclpy.action import ActionServer, GoalResponse
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, Twist
 from interfaces.action import GoalAction as StopAction
+import time
+
 
 class StopServer(Node):
     def __init__(self):
@@ -17,19 +19,19 @@ class StopServer(Node):
         self.goal_pose = None
         self.current_cmd_vel = Twist()
         self.prev_bot_position = None
-        self.odom_count = 0
+        self.prev_log_time = None
 
     def odom_callback(self, msg):
-        if self.odom_count % 10:
-            self.odom_count = 0
-            self.prev_bot_position = self.bot_position
         self.bot_position = msg.pose.pose.position
         self.bot_orientation = msg.pose.pose.orientation
-        self.odom_count += 1
         
     def check_movement(self):
-        if not (self.prev_bot_position is None):
-            return (self.prev_bot_position.x - self.bot_position.x) + (self.prev_bot_position.y - self.bot_position.y) + (self.prev_bot_position.z - self.bot_position.z) > 0.1
+        log_time = time.time()
+        if self.prev_bot_position is None or (log_time - self.prev_log_time) >= 2:
+            if not (self.prev_bot_position is None):
+                return (self.prev_bot_position.x - self.bot_position.x) + (self.prev_bot_position.y - self.bot_position.y) + (self.prev_bot_position.z - self.bot_position.z) > 0.2
+            self.prev_bot_position = self.bot_position
+            self.prev_log_time = log_time
         return False
 
     async def execute_callback(self, goal_handle):

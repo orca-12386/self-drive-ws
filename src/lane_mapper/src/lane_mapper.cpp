@@ -385,11 +385,11 @@ private:
         
         float value;
         float goodvalue;
-        int jlog;
+        // int jlog;
         for(int i = 0;i<depth_image.rows;i++) {
             goodvalue = z_threshold;
             for(int j = 0;j<depth_image.cols;j++) {
-                jlog = j;
+                // jlog = j;
                 value = depth_image.at<float>(i, j);
                 if((!cvIsNaN(value) && !cvIsInf(value))) {
                     goodvalue = value;
@@ -398,7 +398,7 @@ private:
             }
             if(goodvalue < z_threshold) {
                 double d = static_cast<double>(value); // Access color pixel
-                Point p = convert_depth_to_point(cv::Point(jlog, i), d, camera_info);    
+                Point p = convert_depth_to_point(cv::Point(0, i), d, camera_info);    
                 polygon_corners.push_back(p);
                 Point p2 = convert_depth_to_point(cv::Point(depth_image.cols-1, i), d, camera_info);
                 polygon_corners.push_back(p2);
