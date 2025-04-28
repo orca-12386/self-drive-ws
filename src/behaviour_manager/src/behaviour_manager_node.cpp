@@ -26,6 +26,71 @@
 #include <array>
 #include <map>
 
+/*
+Detection
+
+edge
+current
+adjacent
+
+find distance to white lane, yellow lane
+get difference
+classify
+
+
+
+*/
+
+bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& dst) {
+    std::vector<std::array<int, 2>> visited_vec;
+    std::unordered_set<uint64_t> visited;
+    auto hash_coords = [](const std::array<int, 2>& coords) {
+        return (static_cast<uint64_t>(coords[0]) << 32) | static_cast<uint64_t>(coords[1]);
+    };
+    std::queue<std::array<int, 2>> q;
+    std::array<int, 2> p;
+    std::array<std::array<int, 2>, 4> neighbours;
+    q.push(src);
+    while(q.size()>0) {
+        p = q.front();
+        q.pop();
+        if(map->data[p[1]*map->info.width + p[0]] > 0) {
+            dst = p;
+            return true;
+        }
+        if(sqrt(pow(p[0]-src[0],2) + pow(p[1]-src[1],2)) > 60) {
+            return false;
+        }
+        neighbours[0] = {p[0]+1, p[1]};
+        neighbours[1] = {p[0], p[1]+1};
+        neighbours[2] = {p[0]-1, p[1]};
+        neighbours[3] = {p[0], p[1]-1};
+        visited_vec.push_back(p);
+        for(int i=0;i<4;i++) {
+            if(neighbours[i][0] >= map->info.width || neighbours[i][0] < 0) {
+                continue;
+            }
+            if(neighbours[i][1] >= map->info.height || neighbours[i][1] < 0) {
+                continue;
+            }
+            if(visited.find(hash_coords(neighbours[i])) == visited.end()) {
+                q.push(neighbours[i]);
+                visited.insert(hash_coords(neighbours[i]));
+            }
+        }
+    }
+    return false;
+}
+
+double get_distance_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, double& distance) {
+    std::array<int, 2> dst;
+    bool status = get_nearest_point_bfs(src, map, dst);
+    if(status) {
+        distance = std::sqrt(pow(src[0]-dst[0], 2)+pow(src[1]-dst[1], 2)) * map->info.resolution;
+    }
+    return status;
+}
+
 
 class Detection {
 public:
@@ -48,7 +113,33 @@ public:
         double dist = calculate_distance(reference_location);
         return dist <= threshold;
     }
+ 
+    bool get_grid_coords(const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& grid_coords) {
+        int grid_x = static_cast<int>(detection_location[0] / map->info.resolution);
+        int grid_y = static_cast<int>(detection_location[1] / map->info.resolution);
+        grid_coords = {grid_x, grid_y};
+        return (0<=grid_x && grid_x < map->info.width && 0<=grid_y && grid_y < map->info.height);
+    }
+
+    bool check_area(const nav_msgs::msg::OccupancyGrid::SharedPtr near_map, const nav_msgs::msg::OccupancyGrid::SharedPtr yellow_map) {
+        std::array<int, 2> src;
+        bool grid_status = this->get_grid_coords(near_map, src);
+        if(!grid_status) {
+            return false;
+        }
+        double wd, yd;
+        bool swd = get_distance_bfs(src, near_map, wd);
+        bool syd = get_distance_bfs(src, yellow_map, yd);
+        if(swd && syd) {
+            this->edge = yd - wd >= 4;
+            this->current = std::abs(wd-yd) < 4;
+            this->adjacent = wd - yd >= 4;
+            return true;
+        }
+        return false;
+    }
     
+    bool edge, adjacent, current;
     bool action;
     double distance;
     std::array<double, 3> robot_location;
@@ -58,27 +149,41 @@ public:
 
 class DetectionSubscriber {
 public:
-    DetectionSubscriber(rclcpp::Node* node, std::string topic, double distance_threshold, std::function<std::array<double, 3>()> get_odometry_location_func, std::function<double()> get_odometry_yaw_func) {
+    DetectionSubscriber(rclcpp::Node* node, std::string topic, double distance_threshold, 
+        std::function<std::array<double, 3>()> get_odometry_location_func, std::function<double()> get_odometry_yaw_func,
+        std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_near_map_func,
+        std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_yellow_map_func        
+    ) {
         client_cb_group = nullptr;
         rclcpp::SubscriptionOptions options;
         options.callback_group = client_cb_group;        
         this->get_odometry_location_func = get_odometry_location_func;
         this->get_odometry_yaw_func = get_odometry_yaw_func;
+
+        this->get_near_map_func = get_near_map_func;
+        this->get_yellow_map_func = get_yellow_map_func;
+
         this->node = node;
         this->sub = node->create_subscription<geometry_msgs::msg::Point>(topic, 10, std::bind(&DetectionSubscriber::detectionCallback, this, std::placeholders::_1), options);
         recv = {false, false};
         this->distance_threshold = distance_threshold;
     }
 
-    bool is_detected() {
+    bool is_detected(Detection*& det_out) {
         Detection* det;
         bool status = this->get_latest_detection(det);
         if(status) {
+            det_out = det;
             if(det->validate_distance(this->distance_threshold, get_odometry_location_func()) && !det->action) {
                 det->action = true;
                 return true;
             }
         }
+        Detection* falsedet = new Detection({0,0}, {0,0,0});
+        falsedet->current = false;
+        falsedet->adjacent = false;
+        falsedet->edge = false;
+        det_out = falsedet;
         return false;
     }
 
@@ -111,6 +216,13 @@ private:
         bool conditions = true;
         conditions = conditions && is_not_previous_detection;
         conditions = conditions && is_in_detection_range;
+        if (!conditions) {
+            return;
+        }
+        nav_msgs::msg::OccupancyGrid::SharedPtr near_map = get_near_map_func();
+        nav_msgs::msg::OccupancyGrid::SharedPtr yellow_map = get_yellow_map_func();
+        det->check_area(near_map, yellow_map);
+        conditions = conditions && (det->current || det->edge);
         // RCLCPP_INFO(node->get_logger(), std::string(std::string("Distance: ")+std::to_string(det->distance)).c_str());
         if(conditions) {
             add_detection(det);
@@ -159,6 +271,8 @@ private:
     std::array<bool, 2> recv;
     std::function<std::array<double, 3>()> get_odometry_location_func;
     std::function<double()> get_odometry_yaw_func;
+    std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_near_map_func;
+    std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_yellow_map_func;
     rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr sub;
     std::array<Detection*, 2> detections;
     rclcpp::Node* node;
@@ -314,11 +428,11 @@ public:
 private:
     void initialise_data() {
         // Detector subscriptions
-        // near_map_sub = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-        //     "/map/white/local/near", 10, std::bind(&BehaviourManagerNode::nearMapCallback, this, std::placeholders::_1));
+        near_map_sub = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
+            "/map/white/local/near", 10, std::bind(&BehaviourManagerNode::nearMapCallback, this, std::placeholders::_1));
 
-        // far_map_sub = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-        //     "/map/white/local/far", 10, std::bind(&BehaviourManagerNode::farMapCallback, this, std::placeholders::_1));
+        yellow_map_sub = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
+            "/map/yellow/local/interp", 10, std::bind(&BehaviourManagerNode::yellowMapCallback, this, std::placeholders::_1));
 
         odometry_sub = create_subscription<nav_msgs::msg::Odometry>(
             "/odom", 10, 
@@ -341,9 +455,16 @@ private:
         };
 
         for(auto& topic : detection_topics) {
-            detection_subs[topic.first] = std::make_unique<DetectionSubscriber>(this, topic.second, detection_distance_limits.at(topic.first), std::bind(&BehaviourManagerNode::get_odometry_location, this), std::bind(&BehaviourManagerNode::get_odometry_yaw, this));
+            detection_subs[topic.first] = std::make_unique<DetectionSubscriber>(
+                this, 
+                topic.second, 
+                detection_distance_limits.at(topic.first), 
+                std::bind(&BehaviourManagerNode::get_odometry_location, this), 
+                std::bind(&BehaviourManagerNode::get_odometry_yaw, this),
+                std::bind(&BehaviourManagerNode::get_near_map, this),
+                std::bind(&BehaviourManagerNode::get_yellow_map, this)
+            );
         }
-
 
         // Actions: Lane change, left turn, right turn
         this->lane_change_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "lane_change");
@@ -364,7 +485,7 @@ private:
         lane_interpolation_toggle_request = std::make_shared<example_interfaces::srv::SetBool::Request>();
 
         near_map_recv = false;
-        far_map_recv = false;
+        yellow_map_recv = false;
         odometry_recv = false;
         
         /*
@@ -377,7 +498,7 @@ private:
         // left: 2
         // right: 1
         turn_sequence = {1,0,2};
-        int current_turn_index = 0;
+        current_turn_index = 0;
     }
 
     std::array<double, 3> get_odometry_location() {
@@ -386,6 +507,14 @@ private:
 
     double get_odometry_yaw() {
         return odometry_yaw;
+    }
+
+    nav_msgs::msg::OccupancyGrid::SharedPtr get_near_map() {
+        return near_map_msg;
+    }
+
+    nav_msgs::msg::OccupancyGrid::SharedPtr get_yellow_map() {
+        return yellow_map_msg;
     }
 
     void odomCallback(nav_msgs::msg::Odometry::SharedPtr msg) {
@@ -401,6 +530,16 @@ private:
         this->odometry_yaw = yaw;
         this->odometry_recv = true;
     }
+
+    void nearMapCallback(nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
+        near_map_msg = msg;
+        near_map_recv = true;
+    } 
+
+    void yellowMapCallback(nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
+        yellow_map_msg = msg;
+        yellow_map_recv = true;
+    } 
 
     interfaces::action::GoalAction::Goal create_goal_message(int data) {
         auto goal_msg = interfaces::action::GoalAction::Goal();
@@ -523,12 +662,15 @@ private:
 
     void process_detections() {
         std::unordered_map<std::string, bool> is_detected;
+        std::unordered_map<std::string, Detection*> detections;
+        Detection* det;
         for(const auto & topic : detection_subs) {
-            is_detected[topic.first] = topic.second->is_detected();
+            is_detected[topic.first] = topic.second->is_detected(det);
+            detections[topic.first] = det;
         }
         
-        if(is_detected.at("stop_sign")) {
-            log("Stop sign detected");
+        if(is_detected.at("stop_sign") && detections["stop_sign"]->edge) {
+            log("Stop sign detected at edge");
             // stop following
             lane_follow_toggle(false);
             // stop
@@ -547,18 +689,22 @@ private:
                 }
                 current_turn_index++;
             }
-        } else if(is_detected.at("tyre")) {
+        } else if(is_detected.at("tyre") && detections["tyre"]->current) {
             log("Tyre detected");
             // stop following
             lane_follow_toggle(false);
             // change planner map
             lane_change();
         } else if(is_detected.at("traffic_drum")) {
-            log("Traffic drum detected");
-            // stop following
-            lane_follow_toggle(false);
-            // lane change
-            lane_change();
+            if(detections["traffic_drum"]->current) {
+                log("Traffic drum detected in current lane");
+                // stop following
+                lane_follow_toggle(false);
+                // lane change
+                lane_change();    
+            } else if(detections["traffic_drum"]->edge) {
+                log("Traffic drum detected at edge");
+            }
         } else {
             // lane follow
             if(mode == 0) {
@@ -592,8 +738,8 @@ keep
 
     void timer_callback() {
         bool recv = true;
-        // recv = recv && near_map_recv;
-        // recv = recv && far_map_recv;
+        recv = recv && near_map_recv;
+        recv = recv && yellow_map_recv;
         recv = recv && odometry_recv;
         if(recv) {
             process_detections();
@@ -607,17 +753,17 @@ keep
     std::unordered_map<std::string, std::unique_ptr<DetectionSubscriber>> detection_subs;
 
     bool odometry_recv;
-    bool near_map_recv, far_map_recv;
+    bool near_map_recv, yellow_map_recv;
 
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr near_map_sub;
-    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr far_map_sub;
+    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr yellow_map_sub;
 
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub;
 
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr lkd_pub;
 
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
-    nav_msgs::msg::OccupancyGrid::SharedPtr map_msg, nearest_map_msg;
+    nav_msgs::msg::OccupancyGrid::SharedPtr yellow_map_msg, near_map_msg;
     nav_msgs::msg::Odometry::SharedPtr odometry_msg;
 
     rclcpp::TimerBase::SharedPtr timer;
