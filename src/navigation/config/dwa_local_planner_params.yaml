@@ -1,0 +1,45 @@
+DWAPlannerROS:
+  # Robot Configuration Parameters
+  max_vel_trans: 3.5 # Maximum translational velocity
+  min_vel_trans: 0.4 # Minimum translational velocity
+  max_vel_x: 2.23 # Maximum velocity in x-direction
+  min_vel_x: 1.0 # Minimum velocity in x-direction
+  max_vel_y: 0.0 # Maximum velocity in y-direction (set to zero for non-holonomic robots)
+  min_vel_y: 0.0 # Minimum velocity in y-direction (set to zero for non-holonomic robots)
+  max_vel_theta: 1.0 # Maximum rotational velocity
+  min_vel_theta: 0.0 # Minimum rotational velocity
+  acc_lim_x: 1.5 # Acceleration limit in x-direction
+  acc_lim_y: 0.0 # Acceleration limit in y-direction (set to zero for non-holonomic robots)
+  acc_lim_theta: 1.5 # Acceleration limit for rotation
+  xy_goal_tolerance: 0.5 # Goal tolerance in x and y directions
+  yaw_goal_tolerance: 1.0 # Goal tolerance in yaw
+  latch_xy_goal_tolerance: false # Latch the goal tolerance
+  holonomic_robot: false # Set to true if the robot is holonomic
+
+  # DWA Parameters
+  sim_time: 2.0 # Time to simulate trajectories (seconds)
+  sim_granularity: 0.15 # Granularity of the simulation (meters)
+  angular_sim_granularity: 0.15 # Granularity of the simulation for angular motion (radians)
+  vx_samples: 70 # Number of samples in velocity space for x velocity
+  vtheta_samples: 70 # Number of samples in velocity space for theta
+
+  # Trajectory Scoring Parameters
+  path_distance_bias: 100.0 # Weight for the path distance part of the cost function
+  goal_distance_bias: 10.0 # Weight for the goal distance part of the cost function
+  occdist_scale: 2.0 # Weight for the obstacle distance part of the cost function
+  forward_point_distance: 1.0 # Distance of the point ahead of the robot where the robot is "going towards"
+  stop_time_buffer: 0.2 # Buffer time before stopping
+  scaling_speed: 0.25 # Speed below which to scale the robot's velocity
+
+  # Oscillation Prevention Parameters
+  oscillation_reset_dist: 0.05 # Reset oscillation when the robot moves this distance
+
+  # Global Plan Parameters
+  prune_plan: true # Prune the path as the robot moves
+
+  # Debugging Parameters
+  publish_traj_pc: true # Publish the trajectory point cloud for debugging
+
+  # Additional Parameters (Optional)
+  dwa: true # Use Dynamic Window Approach, set to false to use trajectory rollout
+
