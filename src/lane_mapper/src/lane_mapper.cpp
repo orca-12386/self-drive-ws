@@ -1,6 +1,6 @@
 #define HEIGHT 3000
 #define WIDTH 3000
-#define RESOLUTION 0.04
+#define RESOLUTION 0.08
 
 // #define DEBUG
 
@@ -94,33 +94,17 @@ public:
     LaneMapperNode() : rclcpp::Node("lane_mapper_node") {
         RCLCPP_INFO(this->get_logger(), "lane_mapper_node started");
 
-        // this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
-        // this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
-        // std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
-        // std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
-
-        // this->declare_parameter("map_pub_topic", rclcpp::PARAMETER_STRING);
-        // this->declare_parameter("mask_sub_topic", rclcpp::PARAMETER_STRING);
-        // std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
-        // std::string mask_sub_topic = this->get_parameter("mask_sub_topic").as_string();
-
-        // Initialise subscriptions
-
         this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
         this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
-        // std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
-        // std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
-
-        std::string depth_sub_topic = "/zed/zed_node/depth/depth_registered";
-        std::string camera_info_sub_topic = "/zed/zed_node/rgb/camera_info";
-
+        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
+        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
 
         this->declare_parameter("map_pub_topic", rclcpp::PARAMETER_STRING);
         this->declare_parameter("mask_sub_topic", rclcpp::PARAMETER_STRING);
-        // std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
-        std::string map_pub_topic = "/map/white";
-        // std::string mask_sub_topic = this->get_parameter("mask_sub_topic").as_string();
-        std::string mask_sub_topic = "/mask/white";
+        std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
+        std::string mask_sub_topic = this->get_parameter("mask_sub_topic").as_string();
+
+        // Initialise subscriptions
 
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
             depth_sub_topic, 10, std::bind(&LaneMapperNode::depthImageCallback, this, std::placeholders::_1));
@@ -132,7 +116,7 @@ public:
             camera_info_sub_topic, 10, std::bind(&LaneMapperNode::cameraInfoCallback, this, std::placeholders::_1));
 
         odometry_sub = create_subscription<nav_msgs::msg::Odometry>(
-            "/dlo/odom_node/odom", 10, 
+            "/odom", 10, 
             std::bind(&LaneMapperNode::odomCallback, this, std::placeholders::_1));
 
 
@@ -173,7 +157,7 @@ public:
 
         instant_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
         instant_map_msg->data.resize(grid_height*grid_width, 0);
-        instant_map_msg->header.frame_id = "robot/odom";
+        instant_map_msg->header.frame_id = "map";
         instant_map_msg->info.width = grid_width;
         instant_map_msg->info.height = grid_height;
         instant_map_msg->info.resolution = grid_resolution;
@@ -184,7 +168,7 @@ public:
 
         full_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
         full_map_msg->data.resize(grid_height*grid_width, -1);
-        full_map_msg->header.frame_id = "robot/odom";
+        full_map_msg->header.frame_id = "map";
         full_map_msg->info.width = grid_width;
         full_map_msg->info.height = grid_height;
         full_map_msg->info.resolution = grid_resolution;
@@ -204,25 +188,21 @@ private:
     void depthImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
         this->depth_image_msg = msg;
         depth_recv = true;
-        RCLCPP_INFO(this->get_logger(),"Depth");
         timer_callback();
     }
 
     void maskImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
         this->mask_image_msg = msg;
-        RCLCPP_INFO(this->get_logger(),"Mask");
         mask_recv = true;
     }
 
     void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg) {
         this->camera_info_msg = msg;
-        RCLCPP_INFO(this->get_logger(),"CameraInfo");
         camera_info_recv = true;
     }
 
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
         this->odometry_msg = msg;
-        RCLCPP_INFO(this->get_logger(),"Odom");
         odometry_recv = true;
     }
 
@@ -283,7 +263,7 @@ private:
     void get_points(sensor_msgs::msg::Image::SharedPtr mask, sensor_msgs::msg::Image::SharedPtr depth, sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {    
 
         Timer t = Timer("sensor msg to cv mat");
-        log_debug("Inside Get Points");
+
         depth_image_ptr = cv_bridge::toCvCopy(depth, depth->encoding);
         depth_image = depth_image_ptr->image;
 
@@ -306,7 +286,7 @@ private:
         log_debug(std::string("Number of non-zero pixel locations: ")+std::to_string(static_cast<int>(locations.size())));
         
         log_debug(t3.log());
-        log_debug("Got Locations");
+
         Timer t4 = Timer("Point vector");
 
         points.clear();
@@ -465,13 +445,12 @@ private:
         Timer t7 = Timer("create and publish");
 
         full_map_msg->header.stamp = this->now();
-        log_debug("Created map msg");
+        //log_debug("Created map msg");
 
         //publish map
-        log_debug("Published Map");
         instant_map_pub->publish(*instant_map_msg);
         map_pub->publish(*full_map_msg);
-        
+
         log_debug(t7.log());
     }
 
@@ -483,7 +462,7 @@ private:
         if(recv) {
             get_points(mask_image_msg, depth_image_msg, camera_info_msg);
         } else {
-            log_debug("Waiting for subscriptions");
+            //log_debug("Waiting for subscriptions");
         }
     }
 
