@@ -99,6 +99,22 @@ public:
         this->robot_location = robot_location;
         this->distance = calculate_distance(robot_location);
         this->action = false;
+        this->current = false;
+        this->edge = false;
+        this->adjacent = false;
+    }
+
+    std::string to_string() {
+        std::string o0(std::string("World Coordinates: ")+std::to_string(detection_location[0])+std::string(",")+std::to_string(detection_location[1])+std::string(",")+std::to_string(detection_location[2]));
+        std::string o1(std::string("Distance: ")+std::to_string(this->distance));
+        std::string o2(std::string("Action: ")+std::to_string(this->action));
+        std::string o3(std::string("Current: ")+std::to_string(this->current));
+        std::string o4(std::string("Adjacent: ")+std::to_string(this->adjacent));
+        std::string o5(std::string("Edge: ")+std::to_string(this->edge));
+        std::string o6(std::string("Distance to white lane: ")+std::to_string(this->wd));
+        std::string o7(std::string("Distance to yellow lane: ")+std::to_string(this->yd));
+        std::string nl("\n");
+        return o0+nl+o1+nl+o2+nl+o3+nl+o4+nl+o5+nl+o6+nl+o7+nl;
     }
 
     double calculate_distance(std::array<double, 3> reference_location) {
@@ -113,11 +129,27 @@ public:
         double dist = calculate_distance(reference_location);
         return dist <= threshold;
     }
+
+    bool validate_difference(double threshold, std::array<double, 3> reference_location) {
+        bool valid = true;
+        double diff;
+        for(int i = 0; i<2 ;i++) {
+            diff = std::abs(detection_location[i] - reference_location[i]);
+            valid = valid && (diff <= threshold);
+            // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), std::to_string(diff).c_str());
+        }
+        return valid;
+    }
  
     bool get_grid_coords(const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& grid_coords) {
-        int grid_x = static_cast<int>(detection_location[0] / map->info.resolution);
-        int grid_y = static_cast<int>(detection_location[1] / map->info.resolution);
-        grid_coords = {grid_x, grid_y};
+        if(!map) {
+            return false;
+        }
+        // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::to_string(detection_location[0])+std::string(",")+std::to_string(detection_location[1])).c_str());
+        int grid_x = std::round((detection_location[0] - map->info.origin.position.x) / map->info.resolution);
+        int grid_y = std::round((detection_location[1] - map->info.origin.position.y) / map->info.resolution);
+        grid_coords[0] = grid_x;
+        grid_coords[1] = grid_y;
         return (0<=grid_x && grid_x < map->info.width && 0<=grid_y && grid_y < map->info.height);
     }
 
@@ -125,21 +157,23 @@ public:
         std::array<int, 2> src;
         bool grid_status = this->get_grid_coords(near_map, src);
         if(!grid_status) {
+            RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("detection location ")+std::to_string(detection_location[0])+std::string(",")+std::to_string(detection_location[1])+std::to_string(detection_location[2])).c_str());
+            RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("grid coords not in bounds behaviour_manager ")+std::to_string(src[0])+std::string(",")+std::to_string(src[0])).c_str());
             return false;
         }
-        double wd, yd;
         bool swd = get_distance_bfs(src, near_map, wd);
         bool syd = get_distance_bfs(src, yellow_map, yd);
         if(swd && syd) {
-            this->edge = yd - wd >= 4;
-            this->current = std::abs(wd-yd) < 4;
-            this->adjacent = wd - yd >= 4;
+            this->edge = wd < 0.2;
+            this->current = std::abs(wd-yd) < 0.3;
+            this->adjacent = wd - yd >= 0.5;
             return true;
         }
         return false;
     }
     
     bool edge, adjacent, current;
+    double wd, yd;
     bool action;
     double distance;
     std::array<double, 3> robot_location;
@@ -154,7 +188,7 @@ public:
         std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_near_map_func,
         std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_yellow_map_func        
     ) {
-        client_cb_group = nullptr;
+        client_cb_group = node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         rclcpp::SubscriptionOptions options;
         options.callback_group = client_cb_group;        
         this->get_odometry_location_func = get_odometry_location_func;
@@ -164,6 +198,7 @@ public:
         this->get_yellow_map_func = get_yellow_map_func;
 
         this->node = node;
+        this->topic = topic;
         this->sub = node->create_subscription<geometry_msgs::msg::Point>(topic, 10, std::bind(&DetectionSubscriber::detectionCallback, this, std::placeholders::_1), options);
         recv = {false, false};
         this->distance_threshold = distance_threshold;
@@ -179,39 +214,47 @@ public:
                 return true;
             }
         }
-        Detection* falsedet = new Detection({0,0}, {0,0,0});
-        falsedet->current = false;
-        falsedet->adjacent = false;
-        falsedet->edge = false;
-        det_out = falsedet;
         return false;
     }
 
 private:
     void detectionCallback(geometry_msgs::msg::Point::SharedPtr msg) {
-        RCLCPP_INFO(node->get_logger(), "Received detection");
+        // RCLCPP_INFO(node->get_logger(), "Received detection");
         double yaw = get_odometry_yaw_func();
+        
         std::array<double, 3> odometry_location = get_odometry_location_func();
+        double temp;
+        temp = odometry_location[1];
+        odometry_location[1] = odometry_location[2];
+        odometry_location[2] = temp;
+
         std::array<double, 3> location = {msg->x, msg->z, msg->y};
+        // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("location: ")+std::to_string(location[f])+std::string(",")+std::to_string(location[1])+std::string(",")+std::to_string(location[2])).c_str());
         rotate_coords(location, yaw);
+        // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("rotated location: ")+std::to_string(location[0])+std::string(",")+std::to_string(location[1])+std::string(",")+std::to_string(location[2])).c_str());
         location = {location[0] + odometry_location[0], location[1] + odometry_location[1], location[2] + odometry_location[2]};
+        // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("global location: ")+std::to_string(location[0])+std::string(",")+std::to_string(location[1])+std::string(",")+std::to_string(location[2])).c_str());
         Detection* det = new Detection(location, odometry_location);
 
         Detection* prev_detection;
         bool prev_detection_exists = get_latest_detection(prev_detection);
         bool is_not_previous_detection = true;
         if(prev_detection_exists) {
-            is_not_previous_detection = !(det->validate_distance(2, prev_detection->detection_location));
+            is_not_previous_detection = !(det->validate_difference(2, prev_detection->detection_location));
         }
 
         bool is_in_detection_range = det->validate_distance(this->distance_threshold, odometry_location);
         
         if(!is_not_previous_detection) {
+            double alpha = 0.65;
             // RCLCPP_INFO(node->get_logger(), "Same");
+            for(int i = 0;i<3;i++) {
+                prev_detection->detection_location[i] = (alpha*det->detection_location[i]) + ((1-alpha)*prev_detection->detection_location[i]);
+            }
         }
-        if(!is_in_detection_range) {
-            // RCLCPP_INFO(node->get_logger(), "not in range");
-        }
+        // if(!is_in_detection_range) {
+        //     RCLCPP_INFO(node->get_logger(), "not in range");
+        // }
 
         bool conditions = true;
         conditions = conditions && is_not_previous_detection;
@@ -221,14 +264,25 @@ private:
         }
         nav_msgs::msg::OccupancyGrid::SharedPtr near_map = get_near_map_func();
         nav_msgs::msg::OccupancyGrid::SharedPtr yellow_map = get_yellow_map_func();
-        det->check_area(near_map, yellow_map);
+        if(!near_map || !yellow_map) {
+            return;
+        }
+        bool area_status = det->check_area(near_map, yellow_map);
+        if(!area_status) {
+            return;
+        }
         conditions = conditions && (det->current || det->edge);
         // RCLCPP_INFO(node->get_logger(), std::string(std::string("Distance: ")+std::to_string(det->distance)).c_str());
         if(conditions) {
             add_detection(det);
-            RCLCPP_INFO(node->get_logger(), "Added");
+            RCLCPP_INFO(node->get_logger(), (std::string("Added new detection: ") + topic).c_str());
+            // if(prev_detection_exists) {
+            //     RCLCPP_INFO(node->get_logger(), prev_detection->to_string().c_str());
+            // }
+            RCLCPP_INFO(node->get_logger(), det->to_string().c_str());
         }
     }
+    
     
     void rotate_coords(std::array<double, 3>& p, double yaw) {
         double py = (p[1]*sin(yaw)) - (p[0]*cos(yaw)); 
@@ -277,6 +331,7 @@ private:
     std::array<Detection*, 2> detections;
     rclcpp::Node* node;
     rclcpp::CallbackGroup::SharedPtr client_cb_group;
+    std::string topic;
 };
     
 
@@ -666,35 +721,45 @@ private:
         Detection* det;
         for(const auto & topic : detection_subs) {
             is_detected[topic.first] = topic.second->is_detected(det);
-            detections[topic.first] = det;
+            if(is_detected[topic.first]) {
+                log(std::string("detected: ")+std::string(topic.first));
+                detections[topic.first] = det;                
+            }
         }
         
-        if(is_detected.at("stop_sign") && detections["stop_sign"]->edge) {
-            log("Stop sign detected at edge");
-            // stop following
-            lane_follow_toggle(false);
-            // stop
-            stop_movement();
-            if(detect_intersection()) {
-                switch(turn_sequence[current_turn_index]) {
-                    case 0:
-                        straight_turn();
-                        break;
-                    case 1:
-                        right_turn();
-                        break;
-                    case 2:
-                        left_turn();
-                        break;
-                }
-                current_turn_index++;
+        if(is_detected.at("stop_sign")) {
+            log("Stop sign detected");
+            if(detections["stop_sign"]->edge) {
+                log("Stop sign detected at edge");
+                // stop following
+                lane_follow_toggle(false);
+                // stop
+                stop_movement();
+                if(detect_intersection()) {
+                    switch(turn_sequence[current_turn_index]) {
+                        case 0:
+                            straight_turn();
+                            break;
+                        case 1:
+                            right_turn();
+                            break;
+                        case 2:
+                            left_turn();
+                            break;
+                    }
+                    if (current_turn_index < turn_sequence.size()-1) {
+                        current_turn_index++;
+                    }
+                }    
             }
-        } else if(is_detected.at("tyre") && detections["tyre"]->current) {
-            log("Tyre detected");
-            // stop following
-            lane_follow_toggle(false);
-            // change planner map
-            lane_change();
+        } else if(is_detected.at("tyre")) {
+            if(detections["tyre"]->current) {
+                log("Tyre detected");
+                // stop following
+                lane_follow_toggle(false);
+                // change planner map
+                lane_change();    
+            }
         } else if(is_detected.at("traffic_drum")) {
             if(detections["traffic_drum"]->current) {
                 log("Traffic drum detected in current lane");

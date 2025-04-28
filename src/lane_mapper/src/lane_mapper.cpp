@@ -94,6 +94,9 @@ public:
     LaneMapperNode() : rclcpp::Node("lane_mapper_node") {
         RCLCPP_INFO(this->get_logger(), "lane_mapper_node started");
 
+        this->declare_parameter("sim", rclcpp::PARAMETER_BOOL);
+        sim = this->get_parameter("sim").as_bool();
+
         this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
         this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
         std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
@@ -138,7 +141,7 @@ public:
         grid_origin_y = -(HEIGHT/2.0)*RESOLUTION;
 
         z_threshold = 20;
-        y_threshold = 1;
+        y_threshold = 0.1;
         
         prob_mark = 0.7;
         log_odds_mark = prob_to_log_odds(prob_mark);
@@ -228,6 +231,12 @@ private:
         double z = depth;
         double x = ((u-cx)*z)/fx;
         double y = ((v-cy)*z)/fy;
+        if(this->sim) {
+            const float pitch = 23.5f * M_PI / 180.0f;
+            const float cos_pitch = cos(pitch);
+            const float sin_pitch = sin(pitch);
+            y = 1.5f - z * sin_pitch - y * cos_pitch;
+        }
         Point p = Point();
         p.x = x;
         p.y = y;
@@ -510,6 +519,7 @@ private:
     std::vector<Point> points;
     std::shared_ptr<nav_msgs::msg::OccupancyGrid> instant_map_msg;
     std::shared_ptr<nav_msgs::msg::OccupancyGrid> full_map_msg;
+    bool sim;
 };
 
 

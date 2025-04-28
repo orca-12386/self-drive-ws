@@ -221,6 +221,7 @@ def generate_launch_description():
             executable='lane_mapper_node',
             name='lane_mapper_node',
             parameters=[{
+                'sim': SIM,
                 'depth_sub_topic': depth_sub_topic,
                 'camera_info_sub_topic': camera_info_sub_topic,
                 'mask_sub_topic': '/mask/white',
@@ -232,6 +233,7 @@ def generate_launch_description():
             executable='lane_mapper_node',
             name='lane_mapper_node',
             parameters=[{
+                'sim': SIM,
                 'depth_sub_topic': depth_sub_topic,
                 'camera_info_sub_topic': camera_info_sub_topic,
                 'mask_sub_topic': '/mask/yellow',
