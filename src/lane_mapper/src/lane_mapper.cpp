@@ -383,32 +383,13 @@ private:
 
         std::vector<Point> polygon_corners;
         
-        float value;
-        float goodvalue;
-        // int jlog;
-        for(int i = 0;i<depth_image.rows;i++) {
-            goodvalue = z_threshold;
-            for(int j = 0;j<depth_image.cols;j++) {
-                // jlog = j;
-                value = depth_image.at<float>(i, j);
-                if((!cvIsNaN(value) && !cvIsInf(value))) {
-                    goodvalue = value;
-                    break;
-                }
-            }
-            if(goodvalue < z_threshold) {
-                double d = static_cast<double>(value); // Access color pixel
-                Point p = convert_depth_to_point(cv::Point(0, i), d, camera_info);    
-                polygon_corners.push_back(p);
-                Point p2 = convert_depth_to_point(cv::Point(depth_image.cols-1, i), d, camera_info);
-                polygon_corners.push_back(p2);
-                break;
-            }
-        }
-    
+        Point p1 = convert_depth_to_point(cv::Point(0, 0), static_cast<double>(depth_image.at<float>(0, 0)), camera_info);    
+        polygon_corners.push_back(p1);
+        Point p2 = convert_depth_to_point(cv::Point(depth_image.cols-1, 0), static_cast<double>(depth_image.at<float>(0, depth_image.cols-1)), camera_info);
+        polygon_corners.push_back(p2);
         Point p3 = convert_depth_to_point(cv::Point(depth_image.cols-1, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, depth_image.cols-1)), camera_info);
-        Point p4 = convert_depth_to_point(cv::Point(0, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, 0)), camera_info);
         polygon_corners.push_back(p3);
+        Point p4 = convert_depth_to_point(cv::Point(0, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, 0)), camera_info);
         polygon_corners.push_back(p4);
 
         for (auto it = begin (polygon_corners); it != end (polygon_corners); ++it) {
