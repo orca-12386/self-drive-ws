@@ -13,24 +13,24 @@ public:
     : Node("sensor_republisher")
     {
         auto qos = rclcpp::SensorDataQoS();
-
+        auto qos_reliable = rclcpp::SensorDataQoS().reliable();
         // PointCloud2
         pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             "/ouster/points", qos,
             std::bind(&SensorRepublisher::pointcloud_callback, this, std::placeholders::_1));
-        pointcloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/lidar/points", qos);
+        pointcloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/lidar/points", qos_reliable);
 
         // LaserScan
         scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/ouster/scan", qos,
             std::bind(&SensorRepublisher::scan_callback, this, std::placeholders::_1));
-        scan_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("/lidar/scan", qos);
+        scan_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("/lidar/scan", qos_reliable);
 
         // IMU
         imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
             "/ouster/imu", qos,
             std::bind(&SensorRepublisher::imu_callback, this, std::placeholders::_1));
-        imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("/lidar/imu", qos);
+        imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("/lidar/imu", qos_reliable);
 
         // Timer to check for data
         watchdog_timer_ = this->create_wall_timer(1s, std::bind(&SensorRepublisher::check_data_timeout, this));
