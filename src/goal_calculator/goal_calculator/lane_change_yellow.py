@@ -59,7 +59,7 @@ class LaneChange(Node):
 
         # Create subscriptions.
         subscription_info = {
-            "map": ["map/yellow/local/interp", OccupancyGrid],
+            "map": ["map/yellow/local", OccupancyGrid],
             "odom": ["odom", Odometry],
             "robot_pose_global": ["map/robot_pose_global", PoseStamped],
             "robot_pose_grid": ["map/robot_pose_grid", PoseStamped],
@@ -268,8 +268,9 @@ class LaneChange(Node):
                         
                 return furthest_point
                     
-            first_point = find_furthest_point(cluster, first_point)
-            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], first_point[0], first_point[1], Config.config["extrapolate_distance"])
+            last_point = find_furthest_point(cluster, first_point)
+            furthest_point = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 15)
+            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], Config.config["extrapolate_distance"])
             # distance_lane2_bot = util.calculate_distance(robot_coords_grid, first_point2)
             # distance_goal_bot = util.calculate_distance(robot_coords_grid, first_point)
             goal_coords = np.array(util.convert_to_global_coords(goal_point))

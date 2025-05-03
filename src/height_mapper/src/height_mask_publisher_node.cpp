@@ -198,7 +198,7 @@ private:
                 Point p = convert_depth_to_point(j, i, depthvalue, camera_info);
                 Point base_point = cloudPointToBaselink(p);
                 
-                if (base_point.x < 15 && base_point.z > 0.1 && base_point.z < 2.0) {
+                if (base_point.x > 1.5 && base_point.x < 15 && base_point.z > 0.1 && base_point.z < 2.0) {
                     valid_points.at<uchar>(i, j) = 255;
                 }
             }
