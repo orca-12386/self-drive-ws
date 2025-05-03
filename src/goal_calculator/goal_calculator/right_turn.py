@@ -8,7 +8,6 @@ import numpy as np
 from collections import deque
 import math
 from interfaces.action import GoalAction as RightTurn
-import asyncio
 from scipy.spatial.transform import Rotation
 
 def euler_to_quat(euler):
@@ -83,19 +82,19 @@ class RightTurnNode(Node):
             x, y = queue.popleft()
             if self.map_data[y, x] > 0:
                 
-                is_right = False
+                valid = False
                 bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
 
                 if math.pi / 4 <= bot_yaw<= 3 * math.pi / 4:  
-                    is_right = y - 2 < bot_y < y + 2
+                    valid = y - 2 < bot_y < y + 2
                 elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:  
-                    is_right = y - 2 < bot_y < y + 2
+                    valid = y - 2 < bot_y < y + 2
                 elif (-math.pi <= bot_yaw < -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):  
-                    is_right = x - 2 < bot_x < x + 2
+                    valid = x - 2 < bot_x < x + 2
                 elif -math.pi / 4 < bot_yaw < math.pi / 4:  
-                    is_right = x - 2 < bot_x < x + 2
+                    valid = x - 2 < bot_x < x + 2
 
-                if is_right:
+                if valid:
                     self.get_logger().info(f"Right Lane Found: ({x}, {y})")
                     return (x, y)
 

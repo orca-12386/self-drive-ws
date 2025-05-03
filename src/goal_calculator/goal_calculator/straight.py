@@ -74,10 +74,11 @@ class StraightActionServer(Node):
         self.monitor_thread.daemon = True
         self.monitor_thread.start()
         
-        self.timer = self.create_timer(0.1, self.publish_goal)
-        
+        self.timer = self.create_timer(0.2, self.publish_goal)
+
+        rate = self.create_rate(5)
         while rclpy.ok() and self._action_running and not self._action_completed:
-            time.sleep(0.1)  
+            rate.sleep()
         
         if not self._action_completed:
             result.success = False
@@ -165,20 +166,20 @@ class StraightActionServer(Node):
                 
             if map_data[y, x] > 0:
 
-                is_perpendicular = False
+                valid = False
                 bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
                 bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y, origin, resolution)
 
                 if math.pi / 4 <= bot_yaw<= 3 * math.pi / 4:  
-                    is_perpendicular = y - 2 < bot_y < y + 2
+                    valid = y - 2 < bot_y < y + 2
                 elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:  
-                    is_perpendicular = y - 2 < bot_y < y + 2
+                    valid = y - 2 < bot_y < y + 2
                 elif (-math.pi <= bot_yaw < -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):  
-                    is_perpendicular = x - 2 < bot_x < x + 2
+                    valid = x - 2 < bot_x < x + 2
                 elif -math.pi / 4 < bot_yaw < math.pi / 4:  
-                    is_perpendicular = x - 2 < bot_x < x + 2
+                    valid = x - 2 < bot_x < x + 2
 
-                if is_perpendicular:
+                if valid:
                     return (x, y)
 
             for dx, dy in directions:

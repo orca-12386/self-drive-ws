@@ -11,7 +11,6 @@ import math
 from collections import deque
 from scipy.spatial.distance import cdist
 from interfaces.action import GoalAction as LeftTurn
-import asyncio
 from scipy.spatial.transform import Rotation
 
 
@@ -319,6 +318,8 @@ class LeftTurnNode(Node):
                 self.get_logger().info("Could Not Calculate Goal")
                 goal_handle.abort()
                 return LeftTurn.Result()
+            
+            rate = self.create_rate(5)
 
             if self.Midpoint is not None and self.final_goal is None:
                 self.publish_goal()
@@ -327,7 +328,7 @@ class LeftTurnNode(Node):
                         self.get_logger().info("Midpoint Reached")
                         break
                     self.publish_goal()
-                    asyncio.sleep(0.1)
+                    rate.sleep()
 
             self.calculate_goal()
             self.publish_goal()
@@ -340,7 +341,7 @@ class LeftTurnNode(Node):
                     result.success = True
                     return result
                 self.publish_goal()
-                asyncio.sleep(0.1)
+                rate.sleep()
 
         except Exception as e:
             self.get_logger().error(f"Error: {e}")
