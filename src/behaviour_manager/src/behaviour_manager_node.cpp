@@ -117,6 +117,12 @@ public:
         return o0+nl+o1+nl+o2+nl+o3+nl+o4+nl+o5+nl+o6+nl+o7+nl;
     }
 
+    void set_locations(std::array<double, 3> detection_location, std::array<double, 3> robot_location) {
+        this->detection_location = detection_location;
+        this->robot_location = robot_location;
+        this->distance = calculate_distance(robot_location);
+    }
+
     double calculate_distance(std::array<double, 3> reference_location) {
         double dist = 0;
         for(int i = 0; i<2 ;i++) {
@@ -165,7 +171,8 @@ public:
         bool syd = get_distance_bfs(src, yellow_map, yd);
         if(swd && syd) {
             this->edge = wd < 0.2;
-            this->current = std::abs(wd-yd) < 0.3;
+            // this->current = std::abs(wd-yd) < 0.5;
+            this->current = wd < 3.0 && yd < 3.0;
             this->adjacent = wd - yd >= 0.5;
             return true;
         }
@@ -188,7 +195,8 @@ public:
         std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_near_map_func,
         std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_yellow_map_func        
     ) {
-        client_cb_group = node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        // client_cb_group = node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        client_cb_group = nullptr;
         rclcpp::SubscriptionOptions options;
         options.callback_group = client_cb_group;        
         this->get_odometry_location_func = get_odometry_location_func;
@@ -209,8 +217,11 @@ public:
         bool status = this->get_latest_detection(det);
         if(status) {
             det_out = det;
+            // RCLCPP_INFO(node->get_logger(), "Obtained latest detection:");
+            // RCLCPP_INFO(node->get_logger(), det->to_string().c_str());
             if(det->validate_distance(this->distance_threshold, get_odometry_location_func()) && !det->action) {
                 det->action = true;
+                // RCLCPP_INFO(node->get_logger(), "Returned valid detection");
                 return true;
             }
         }
@@ -223,10 +234,6 @@ private:
         double yaw = get_odometry_yaw_func();
         
         std::array<double, 3> odometry_location = get_odometry_location_func();
-        double temp;
-        temp = odometry_location[1];
-        odometry_location[1] = odometry_location[2];
-        odometry_location[2] = temp;
 
         std::array<double, 3> location = {msg->x, msg->z, msg->y};
         // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("location: ")+std::to_string(location[f])+std::string(",")+std::to_string(location[1])+std::string(",")+std::to_string(location[2])).c_str());
@@ -251,6 +258,8 @@ private:
             for(int i = 0;i<3;i++) {
                 prev_detection->detection_location[i] = (alpha*det->detection_location[i]) + ((1-alpha)*prev_detection->detection_location[i]);
             }
+            prev_detection->robot_location = odometry_location;
+            prev_detection->distance = prev_detection->calculate_distance(odometry_location);
         }
         // if(!is_in_detection_range) {
         //     RCLCPP_INFO(node->get_logger(), "not in range");
@@ -557,7 +566,11 @@ private:
     }
 
     std::array<double, 3> get_odometry_location() {
-        return odometry_location_arr;
+        std::array<double, 3> odometry_location;
+        odometry_location[0] = odometry_location_arr[0];
+        odometry_location[1] = odometry_location_arr[2];
+        odometry_location[2] = odometry_location_arr[1];
+        return odometry_location;
     }
 
     double get_odometry_yaw() {
@@ -719,6 +732,7 @@ private:
         std::unordered_map<std::string, bool> is_detected;
         std::unordered_map<std::string, Detection*> detections;
         Detection* det;
+        // log(std::string("Processing detections"));
         for(const auto & topic : detection_subs) {
             is_detected[topic.first] = topic.second->is_detected(det);
             if(is_detected[topic.first]) {
