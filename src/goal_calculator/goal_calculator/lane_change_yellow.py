@@ -68,7 +68,7 @@ class LaneChange(Node):
         Subscription.create_subscriptions(subscription_info)
 
         publisher_info = {
-            "goal_pose": ["move_base_simple/goal", PoseStamped],
+            "goal_pose": ["move_base_simple/goal1", PoseStamped],
             "lane_change_status": ["lane_change_status", LaneChangeStatus]
         }
         Publisher.create_publishers(publisher_info)
@@ -78,6 +78,38 @@ class LaneChange(Node):
         self.goals = list()
         self.timer = self.create_timer(0.1, self.publish_status_periodically)
         self.timer2 = self.create_timer(2, self.add_goal_pose)
+        self.furthest1_pub = self.create_publisher(PoseStamped, '/furthest_point1_global', 10)
+        self.furthest2_pub = self.create_publisher(PoseStamped, '/furthest_point2_global', 10)
+
+    def publish_furthest_points(self, point1, point2, orientation_yaw=0.0):
+        def make_pose_stamped(x, y, yaw):
+            pose = PoseStamped()
+            pose.header.frame_id = "odom"  # Use "map" if that's your global frame
+            pose.header.stamp = self.get_clock().now().to_msg()
+            pose.pose.position.x = x
+            pose.pose.position.y = y
+            pose.pose.position.z = 0.0
+            pose.pose.orientation.x = 0.0
+            pose.pose.orientation.y = 0.0
+            pose.pose.orientation.z = math.sin(yaw / 2)
+            pose.pose.orientation.w = math.cos(yaw / 2)
+            return pose
+
+        pose1 = make_pose_stamped(point1[0], point1[1], orientation_yaw)
+        pose2 = make_pose_stamped(point2[0], point2[1], orientation_yaw)
+        self.furthest1_pub.publish(pose1)
+        self.furthest2_pub.publish(pose2)
+        self.get_logger().info(f"Published furthest points: {point1}, {point2}")
+    
+    def calculate_angle(self, candidate_goal, previous_goal, second_previous_goal):
+        v1 = np.array(candidate_goal) - np.array(previous_goal)
+        v2 = np.array(second_previous_goal) - np.array(previous_goal)
+        
+        if np.linalg.norm(v1) == 0 or np.linalg.norm(v2) == 0:
+            return 0.0
+        
+        angle = np.arctan2(np.linalg.norm(np.cross(v1, v2)), np.dot(v1, v2))
+        return np.degrees(angle)
 
 
 
@@ -163,113 +195,99 @@ class LaneChange(Node):
         return goal_pose
 
     def get_goal_pose(self, robot_coords_grid):
-        def get_clusters(binary_array, eps=Config.config["dbscan_eps"], min_samples=Config.config["dbscan_min_samples"]):
+        def get_all_clusters(binary_array, eps=Config.config["dbscan_eps"], 
+                            min_samples=Config.config["dbscan_min_samples"]):
             points = np.argwhere(binary_array > 0)
-            NodeGlobal.log_info(str(points))
-            points = points[:, [1, 0]]
+            points = points[:, [1, 0]]  # Swap columns for (x,y) format
+            
             if len(points) < min_samples:
-                return [np.array([]), np.array([])]
+                return []
+            
             dbscan = DBSCAN(eps=eps, min_samples=min_samples)
             clusters = dbscan.fit_predict(points)
-            unique_labels = np.unique(clusters)
-            unique_labels = unique_labels[unique_labels != -1]
-            if len(unique_labels) == 0:
-                return [np.array([]), np.array([])]
-            cluster_sizes = [(label, np.sum(clusters == label)) for label in unique_labels]
-            cluster_sizes.sort(key=lambda x: x[1], reverse=True)
-            result = []
-            for i in range(2):
-                if i < len(cluster_sizes):
-                    label = cluster_sizes[i][0]
-                    cluster_points = points[clusters == label]
-                    result.append(cluster_points)
-                else:
-                    result.append(np.array([]))
-            return result
+            return [points[clusters == label] for label in np.unique(clusters) if label != -1]
 
         try:
             map_data = Subscription.subs["map"].get_latest_data()
             if map_data is None:
                 NodeGlobal.log_error("No map data available")
                 return None
-                
-            clusters = get_clusters(map_data)
-            NodeGlobal.log_info("Cluster shapes: " + str([cluster.shape for cluster in clusters]))
 
-            # Ensure we have at least two valid clusters
-            if all(cluster.shape[0] < Config.config["minimum_points"] for cluster in clusters):
-                NodeGlobal.log_error("Not enough points in cluster detected")
+            all_clusters = get_all_clusters(map_data)
+            NodeGlobal.log_info(f"Found {len(all_clusters)} clusters")
+
+            if not all_clusters:
+                NodeGlobal.log_error("No clusters detected")
                 return None
 
-            # clusters_with_distance = []
-            # for cluster in clusters:
-            #     tree = cKDTree(cluster)
-            #     distance, _ = tree.query(robot_coords_grid, k=1)
-            #     clusters_with_distance.append((distance, cluster))
-            
-            # # Sort by distance (furthest first)
-            # clusters_with_distance.sort(key=lambda x: x[0], reverse=True)
-            # # furthest_cluster_distance, furthest_cluster = clusters_with_distance[0]
-            # closest_cluster_distance, closest_cluster = clusters_with_distance[-1]
-            
-            # tree = cKDTree(furthest_cluster)
-            cluster = clusters[0]
-            tree = cKDTree(cluster)
-            _, nearest_index = tree.query(robot_coords_grid, k=1)
-            # first_point = furthest_cluster[nearest_index]
-            first_point = cluster[nearest_index]
+            # Find cluster closest to robot
+            robot_xy = np.array([robot_coords_grid[0], robot_coords_grid[1]])
+            min_distance = float('inf')
+            closest_cluster = None
+
+            for cluster in all_clusters:
+                if len(cluster) < Config.config["minimum_points"]:
+                    continue  # Skip small clusters
+
+                # Find nearest point in cluster to robot
+                tree = cKDTree(cluster)
+                distance, _ = tree.query(robot_xy, k=1)
+                
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_cluster = cluster
+
+            if closest_cluster is None:
+                NodeGlobal.log_error("No valid clusters found")
+                return None
+
+            tree = cKDTree(closest_cluster)
+            _, nearest_index = tree.query(robot_xy, k=1)
+            first_point = closest_cluster[nearest_index]
             
             def find_furthest_point(cluster, start, max_search_distance=Config.config["max_search_distance"]):
-                if len(self.goals) < 2:
-                    NodeGlobal.log_error("Not enough goal history to find furthest point, using nearest point in target lane")
-                    return start
-                    
                 visited = set()
-                previous_bot_pose = self.goals[-2]
-                NodeGlobal.log_info("previous bot pose: " + str(previous_bot_pose))
-                start_global = np.array(util.convert_to_global_coords(start))
-                max_distance_global = util.calculate_distance(previous_bot_pose, start_global)
                 furthest_point = start
                 queue = []
-                queue.append([start, max_distance_global, 0])  # Add initial distance from start
+                queue.append([start, 0])  # Start with search distance 0
                 tree = cKDTree(cluster)
-                
+
                 while queue:
-                    node, distance, current_search_distance = queue.pop(0)
+                    node, current_search_distance = queue.pop(0)
                     node_tuple = tuple(node)
-                    
-                    # Stop searching if we've exceeded the maximum search distance
+
                     if current_search_distance > max_search_distance:
-                        break
-                    
+                        continue  # Allow other points in the queue to be processed
+
                     if node_tuple in visited:
-                        continue  # Skip already visited nodes
-                    
+                        continue
+
                     visited.add(node_tuple)
-                    
-                    if distance >= max_distance_global:
-                        max_distance_global = distance
-                        furthest_point = node
-                        
+                    furthest_point = node  # Update with the last visited point within limit
+
                     indices = tree.query_ball_point(node, 3)
                     for i in indices:
                         neighbour = cluster[i]
                         if tuple(neighbour) in visited:
                             continue
-                            
-                        neighbour_global = np.array(util.convert_to_global_coords(neighbour))
-                        step_distance = util.calculate_distance(previous_bot_pose, neighbour_global)
-                        
-                        # Calculate the search distance from the start point
+
                         neighbour_search_distance = current_search_distance + util.calculate_distance(node, neighbour)
-                        
-                        if step_distance >= max_distance_global and neighbour_search_distance <= max_search_distance:
-                            queue.append([neighbour, step_distance, neighbour_search_distance])
-                        
+                        if neighbour_search_distance <= max_search_distance:
+                            queue.append([neighbour, neighbour_search_distance])
+
                 return furthest_point
+
                     
-            last_point = find_furthest_point(cluster, first_point)
-            furthest_point = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 15)
+            last_point = find_furthest_point(closest_cluster, first_point)
+            furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 30)
+            furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 30)
+            furthest_point1_global = util.convert_to_global_coords(furthest_point1)
+            furthest_point2_global = util.convert_to_global_coords(furthest_point2)
+            self.publish_furthest_points(furthest_point1_global, furthest_point2_global)
+            # Modify the goal selection block in get_goal_pose:
+            angle1 = self.calculate_angle(furthest_point1_global, self.goals[-1], self.goals[-2])
+            angle2 = self.calculate_angle(furthest_point2_global, self.goals[-1], self.goals[-2])
+            furthest_point = furthest_point1 if angle1 > angle2 else furthest_point2
             goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], Config.config["extrapolate_distance"])
             # distance_lane2_bot = util.calculate_distance(robot_coords_grid, first_point2)
             # distance_goal_bot = util.calculate_distance(robot_coords_grid, first_point)
