@@ -19,7 +19,7 @@ public:
             std::bind(&RobotPosePublisher::mapCallback, this, std::placeholders::_1));
         
         odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-            "/odom", 10, 
+            "/odom/transformed", 10, 
             std::bind(&RobotPosePublisher::odomCallback, this, std::placeholders::_1));
 
         // Initialize publishers

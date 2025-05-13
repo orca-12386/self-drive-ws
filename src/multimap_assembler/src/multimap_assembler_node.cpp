@@ -42,7 +42,7 @@ private:
         map1_recv = false;
         map2_recv = false;
         map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
-        map_msg->header.frame_id = "map";
+        map_msg->header.frame_id = "robot/odom";
     }
 
     void map1Callback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {

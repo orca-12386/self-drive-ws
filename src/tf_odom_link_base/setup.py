@@ -24,6 +24,7 @@ setup(
         'console_scripts': [
             'tf_odom = tf_odom_link_base.tf_odom:main',
             'tf_map = tf_odom_link_base.tf_map:main',
+            'dlo_tf = tf_odom_link_base.dlo_tf:main',
         ],
     },
 )

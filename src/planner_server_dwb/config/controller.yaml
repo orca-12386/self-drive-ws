@@ -76,8 +76,8 @@ local_costmap:
           durability: VOLATILE
       update_frequency: 5.0
       publish_frequency: 2.0
-      global_frame: odom
-      robot_base_frame: base_link
+      global_frame: robot/odom
+      robot_base_frame: robot/base_link
       use_sim_time: True
       rolling_window: true
       width: 10
@@ -88,7 +88,7 @@ local_costmap:
       # plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
 
       static_layer:
-        map_topic: "/map/motion_control"
+        map_topic: "/map/white"
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: False
         enabled: true

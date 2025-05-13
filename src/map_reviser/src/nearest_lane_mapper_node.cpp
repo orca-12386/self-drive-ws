@@ -35,7 +35,7 @@ private:
             map_sub_topic, 10, std::bind(&NearestLaneMapperNode::mapCallback, this, std::placeholders::_1));
 
         odometry_sub = create_subscription<nav_msgs::msg::Odometry>(
-            "/odom", 10, 
+            "/odom/transformed", 10, 
             std::bind(&NearestLaneMapperNode::odomCallback, this, std::placeholders::_1));
 
         map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>(map_pub_topic, 10);
@@ -44,7 +44,7 @@ private:
         odom_recv = false;
         
         nearest_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
-        nearest_map_msg->header.frame_id = "map";
+        nearest_map_msg->header.frame_id = "robot/odom";
     }
 
     void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {

@@ -42,7 +42,7 @@ class OdomMapTransformPublisher(Node):
         
         # For the map frame, we can anchor it to "world" or use another existing frame
         t.header.frame_id = 'world'  # This could be any well-established frame in your system
-        t.child_frame_id = 'map'
+        t.child_frame_id = 'robot/odom'
         
         # Identity transform since map is at the origin of the world
         t.transform.translation.x = 0.0
@@ -62,8 +62,8 @@ class OdomMapTransformPublisher(Node):
         
         # Use current time for the dynamic transform
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'map'  # Parent frame
-        t.child_frame_id = 'odom'  # Child frame
+        t.header.frame_id = 'robot/base_link'  # Parent frame
+        t.child_frame_id = 'robot/odom'  # Child frame
         
         # Identity transform
         t.transform.translation.x = 0.0

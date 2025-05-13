@@ -18,3 +18,6 @@
 [submodule "src/direct_lidar_odometry"]
 	path = src/direct_lidar_odometry
 	url = git@github.com:W-OK-E/direct_lidar_odometry.git
+[submodule "src/teleop_controller"]
+	path = src/teleop_controller
+	url = git@github.com:orca-12386/teleop_controller.git

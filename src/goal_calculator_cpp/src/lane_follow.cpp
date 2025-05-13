@@ -175,7 +175,7 @@ private:
             map2_sub_topic, 10, std::bind(&LaneFollowerNode::map2Callback, this, std::placeholders::_1));
     
         odometry_sub = create_subscription<nav_msgs::msg::Odometry>(
-            "/odom", 10, 
+            "/odom/transformed", 10, 
             std::bind(&LaneFollowerNode::odomCallback, this, std::placeholders::_1));
 
         goal_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("/goal_pose", 10);
@@ -185,7 +185,7 @@ private:
         odom_recv = false;
         
         goal_pose_msg = std::make_shared<geometry_msgs::msg::PoseStamped>();
-        goal_pose_msg->header.frame_id = "map";
+        goal_pose_msg->header.frame_id = "robot/odom";
         goal_pose_msg->header.stamp = this->now();
         goal_pose_msg->pose.position.z = 0.0;
         goal_pose_msg->pose.orientation.x = 0.0;
@@ -220,16 +220,19 @@ private:
 
     void map1Callback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         this->map1_msg = msg;
+        RCLCPP_INFO(this->get_logger(), "Received 1st map");
         map1_recv = true;
     }
 
     void map2Callback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         this->map2_msg = msg;
+        RCLCPP_INFO(this->get_logger(), "Received 2nd map.");
         map2_recv = true;
     }
 
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
         this->odometry_msg = msg;
+        RCLCPP_INFO(this->get_logger(), "Received Odom.");
         odom_recv = true;
         tf2::Quaternion q(
             msg->pose.pose.orientation.x,
@@ -425,7 +428,8 @@ private:
             return;
         }
         if(calculate_goal_angle(goal, goals) > 100) {
-            goal_pub->publish(*goal_pose_msg);            
+            goal_pub->publish(*goal_pose_msg); 
+            RCLCPP_INFO(this->get_logger(),"Published Goal Bitches");           
             if(goals.size() <= 1) {
                 goals.push_back(goal);
             } else if(goals.size() > 0) {
@@ -441,6 +445,7 @@ private:
 
     void timer_callback() {
         if(map1_recv && map2_recv && odom_recv) {
+
             publish_goal(odometry_msg, map1_msg, map2_msg);
         } else {
             log("Waiting for subscriptions");

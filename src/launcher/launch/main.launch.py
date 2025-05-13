@@ -120,7 +120,7 @@ def generate_launch_description():
         zed_wrapper_dir = get_package_share_directory('zed_wrapper')
 
         dlo_dir= get_package_share_directory('direct_lidar_odometry')
-
+        dlio_dir = get_package_share_directory('direct_lidar_inertial_odometry')
         transforms_dir = get_package_share_directory('transforms')
 
         driver_launch = ExecuteProcess(
@@ -184,6 +184,18 @@ def generate_launch_description():
                 }])
         ]
 
+        dlo_tf = [
+            Node(
+                package='transforms',
+                executable='dlo_tf',
+                name='Odom Transformer',
+                parameters=[{
+                    'mask_sub_topic': '/mask/white',
+                    'map_pub_topic': '/map/white'
+                }])
+        ]
+
+
         
         launch_sensors = [
             transforms_launch,
@@ -191,7 +203,7 @@ def generate_launch_description():
             declare_pointcloud_topic,
             declare_imu_topic,
             driver_launch,
-            dlo_launch,
+            # dlo_launch,
             zed_no_tf_launch,
         ]
 
@@ -437,6 +449,14 @@ def generate_launch_description():
         )
     ]
 
+    launch_odom_tf = [
+        Node(
+            package="transforms",
+            executable="odom_tf",
+            name = 'odom_trasformer'
+        )
+    ]
+
     launch_height_mapper = [
         Node(
             package='height_mapper',
@@ -451,22 +471,25 @@ def generate_launch_description():
         launch_description.extend(pointcloud_sim_tf)
         launch_description.extend(launch_transforms)
     else:
-        launch_description.extend(pointcloud_tf)
+        # launch_description.extend(pointcloud_tf)
         launch_description.extend(zed_tf)
         launch_description.extend(lidar_tf)
+        launch_description.extend(launch_odom_tf)
         launch_description.extend(launch_sensors)
 
 
+
     if MOVEMENT:
-        launch_description.extend(launch_motion_control)
+        # launch_description.extend(launch_motion_control)
+        pass
 
     launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)
-    # launch_description.extend(interpolation)
+    launch_description.extend(interpolation)
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
     
-    launch_description.extend(launch_goal_calculators)
+    # launch_description.extend(launch_goal_calculators)    
     
     # launch_description.extend(launch_behaviour_manager)
   
@@ -475,7 +498,7 @@ def generate_launch_description():
     launch_description.extend(launch_topic_remapper)
 
     launch_description.extend(launch_pose_publishers)
-    launch_description.extend(launch_height_mapper)
+    # launch_description.extend(launch_height_mapper)
 
 
     return LaunchDescription(launch_description)

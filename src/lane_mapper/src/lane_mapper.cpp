@@ -1,6 +1,6 @@
 #define HEIGHT 3000
 #define WIDTH 3000
-#define RESOLUTION 0.08
+#define RESOLUTION 0.04
 
 // #define DEBUG
 
@@ -120,7 +120,7 @@ public:
             camera_info_sub_topic, 10, std::bind(&LaneMapperNode::cameraInfoCallback, this, std::placeholders::_1));
 
         odometry_sub = create_subscription<nav_msgs::msg::Odometry>(
-            "/odom", 10, 
+            "/odom/transformed", 10, 
             std::bind(&LaneMapperNode::odomCallback, this, std::placeholders::_1));
 
 
@@ -141,7 +141,7 @@ public:
         grid_origin_x = -(WIDTH/2.0)*RESOLUTION;
         grid_origin_y = -(HEIGHT/2.0)*RESOLUTION;
 
-        z_threshold = 20;
+        z_threshold = 5;
         y_threshold = 1;
         
         prob_mark = 0.7;
@@ -161,7 +161,7 @@ public:
 
         instant_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
         instant_map_msg->data.resize(grid_height*grid_width, 0);
-        instant_map_msg->header.frame_id = "map";
+        instant_map_msg->header.frame_id = "robot/odom";
         instant_map_msg->info.width = grid_width;
         instant_map_msg->info.height = grid_height;
         instant_map_msg->info.resolution = grid_resolution;
@@ -172,7 +172,7 @@ public:
 
         full_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
         full_map_msg->data.resize(grid_height*grid_width, -1);
-        full_map_msg->header.frame_id = "map";
+        full_map_msg->header.frame_id = "robot/odom";
         full_map_msg->info.width = grid_width;
         full_map_msg->info.height = grid_height;
         full_map_msg->info.resolution = grid_resolution;

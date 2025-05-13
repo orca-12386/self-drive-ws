@@ -25,8 +25,8 @@ class DynamicTFBroadcaster(Node):
         """Callback function for the /odom subscriber."""
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_link'
+        t.header.frame_id = 'robot/odom'
+        t.child_frame_id = 'robot/base_link'
 
         t.transform.translation.x = msg.pose.pose.position.x
         t.transform.translation.y = msg.pose.pose.position.y

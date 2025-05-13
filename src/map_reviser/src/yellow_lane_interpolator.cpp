@@ -21,7 +21,7 @@ public:
       std::bind(&YellowLineProcessor::whiteMapCallback, this, std::placeholders::_1));
     
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-      "/odom", 10, 
+      "/odom/transformed", 10, 
       std::bind(&YellowLineProcessor::odomCallback, this, std::placeholders::_1));
     
     // Publisher
