@@ -462,7 +462,7 @@ def generate_launch_description():
 
     launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)
-    # launch_description.extend(interpolation)
+    launch_description.extend(interpolation)
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
     
