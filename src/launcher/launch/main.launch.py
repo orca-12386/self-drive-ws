@@ -149,17 +149,6 @@ def generate_launch_description():
                 "camera_model": "zed2i"
             }.items()
         )
-        
-        pointcloud_tf = [
-            Node(
-                package='transforms',
-                executable='odom_pc',
-                name='pointcloud_transformer',
-                parameters=[{
-                    'pointcloud_topic': '/zed/zed_node/point_cloud/cloud_registered',
-                    'target_frame': 'robot/odom'
-                }])
-        ]
 
 
         lidar_tf = [
@@ -444,6 +433,16 @@ def generate_launch_description():
             name='height_mask_publisher_node'
         )
     ]
+
+    launch_odom_tf = [
+        Node(
+            package="transforms",
+            executable="odom_tf",
+            name = 'odom_trasformer'
+        )
+    ]
+
+
     launch_description = list()
 
     if SIM:
@@ -451,11 +450,10 @@ def generate_launch_description():
         launch_description.extend(pointcloud_sim_tf)
         launch_description.extend(launch_transforms)
     else:
-        launch_description.extend(pointcloud_tf)
         launch_description.extend(zed_tf)
         launch_description.extend(lidar_tf)
         launch_description.extend(launch_sensors)
-
+        launch_description.extend(launch_odom_tf)
 
     if MOVEMENT:
         launch_description.extend(launch_motion_control)
@@ -466,7 +464,7 @@ def generate_launch_description():
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
     
-    launch_description.extend(launch_goal_calculators)
+    # launch_description.extend(launch_goal_calculators)
     
     # launch_description.extend(launch_behaviour_manager)
   
@@ -475,7 +473,7 @@ def generate_launch_description():
     launch_description.extend(launch_topic_remapper)
 
     launch_description.extend(launch_pose_publishers)
-    launch_description.extend(launch_height_mapper)
+    # launch_description.extend(launch_height_mapper)
 
 
     return LaunchDescription(launch_description)

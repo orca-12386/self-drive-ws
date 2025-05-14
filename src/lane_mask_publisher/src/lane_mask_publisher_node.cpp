@@ -116,9 +116,10 @@ private:
     }
 
     void setup_kernels() {
-        int kernel_size = 3;
-        erosion_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(kernel_size, kernel_size));
-        dilation_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(kernel_size, kernel_size));
+        int erosion_kernel_size = 5;
+        int dilation_kernel_size = 7;
+        erosion_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(erosion_kernel_size, erosion_kernel_size));
+        dilation_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(dilation_kernel_size, dilation_kernel_size));
     }
 
     void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {

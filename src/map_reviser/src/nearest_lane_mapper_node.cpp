@@ -114,7 +114,8 @@ private:
         uint64_t src_hash = hash_coords(src[0], src[1]);
         visited.insert(src_hash);
         q.push_back(src);
-        int skip_dist = 7;
+        // int skip_dist = 25;
+        int skip_dist = static_cast<int>(std::round(3/map->info.resolution));
         const int cdx[8] = {1, 0, -1, 0, 1, -1, 1, -1};
         const int cdy[8] = {0, 1, 0, -1, 1, -1, -1, 1};
         int* dx = new int[skip_dist*8];
@@ -132,7 +133,7 @@ private:
             q.pop_front();
             connected.push_back(p);
             
-            for(int i = 0; i < 8; i++) {
+            for(int i = 0; i < skip_dist*8; i++) {
                 int nx = p[0] + dx[i];
                 int ny = p[1] + dy[i];
                 
@@ -176,6 +177,7 @@ private:
         // log("finding nearest");
         bool b = get_nearest_point_bfs(source, map, nearest_pt);
         if(!b) {
+            map_pub->publish(*map);
             return;
         }
         // log("finding connected");

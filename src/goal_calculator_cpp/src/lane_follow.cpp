@@ -275,7 +275,7 @@ private:
                 dst = p;
                 return true;
             }
-            if(sqrt(pow(p[0]-src[0],2) + pow(p[1]-src[1],2)) > 60) {
+            if(sqrt(pow(p[0]-src[0],2) + pow(p[1]-src[1],2)) > 5/map->info.resolution) {
                 return false;
             }
             neighbours[0] = {p[0]+1, p[1]};
@@ -318,13 +318,13 @@ private:
         double best_angle = -1.0;  // Start with negative angle (we want to maximize)
         
         // Search radius limit (20 units)
-        const double max_search_radius = 5.0;
+        const double max_search_radius = 7.0;
         
         // Add neighbors to queue (8 directions for better connectivity)
         std::vector<std::array<int, 2>> directions = {
             {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}
         };
-        int skip_dist = 7;
+        int skip_dist = static_cast<int>(std::round(3/map->info.resolution));
         for(int i = 2;i<=skip_dist;i++) {
             for(int j = 0;j<8;j++) {
                 std::array<int, 2> dir = {directions[j][0]*i, directions[j][1]*i};
