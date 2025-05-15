@@ -417,14 +417,14 @@ private:
         // log(std::to_string(parent1[0]) + std::string(", ") + std::to_string(parent1[1]));
         // log(std::to_string(parent2[0]) + std::string(", ") + std::to_string(parent2[1]));
         // log(std::to_string(goal[0]) + std::string(", ") + std::to_string(goal[1]));
-        goal_pose_msg->pose.position.x = goal[0];
-        goal_pose_msg->pose.position.y = goal[1];
-        goal_pose_msg->pose.orientation.z = sin(average_orientation / 2);
-        goal_pose_msg->pose.orientation.w = cos(average_orientation / 2);
         if(!running) {
             return;
         }
         if(calculate_goal_angle(goal, goals) > 100) {
+            goal_pose_msg->pose.position.x = goal[0];
+            goal_pose_msg->pose.position.y = goal[1];
+            goal_pose_msg->pose.orientation.z = sin(average_orientation / 2);
+            goal_pose_msg->pose.orientation.w = cos(average_orientation / 2);
             goal_pub->publish(*goal_pose_msg);            
             if(goals.size() <= 1) {
                 goals.push_back(goal);
@@ -433,6 +433,12 @@ private:
                     goals.push_back(goal);
                 }    
             }    
+        } else {
+            goal_pose_msg->pose.position.x = goals[goals.size()-1][0];
+            goal_pose_msg->pose.position.y = goals[goals.size()-1][1];
+            goal_pose_msg->pose.orientation.z = sin(average_orientation / 2);
+            goal_pose_msg->pose.orientation.w = cos(average_orientation / 2);
+            goal_pub->publish(*goal_pose_msg);
         }
         if(goals.size() > 10) {
             goals.erase(goals.begin());

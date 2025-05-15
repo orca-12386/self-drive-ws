@@ -91,8 +91,8 @@ private:
             yellow_mask_upper = cv::Scalar(179, 255, 255);
             target_v = -1;  // No brightness adjustment
         } else {
-            // white_mask_hsv_lower = cv::Scalar(0, 0, 180);//Night
-            white_mask_hsv_lower = cv::Scalar(0,0,255);//day
+            white_mask_hsv_lower = cv::Scalar(0, 0, 180);//Night
+            // white_mask_hsv_lower = cv::Scalar(0,0,255);//day
             white_mask_hsv_upper = cv::Scalar(180, 80, 255);
             yellow_mask_lower = cv::Scalar(0, 69, 41);
             yellow_mask_upper = cv::Scalar(179, 255, 255);
