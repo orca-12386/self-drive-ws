@@ -8,7 +8,7 @@
     <rosparam command="load" file="$(find navigation)/config/teb_local_planner_params.yaml" />
     <param name="base_global_planner" value="navfn/NavfnROS" />
     <param name="base_local_planner" value="teb_local_planner/TebLocalPlannerROS" />
-    <remap from="odom" to="/robot/dlo/odom_node/odom" />
+    <remap from="odom" to="/odom/transformed" />
     <remap from="cmd_vel" to="cmd_vel" />
   </node>
 
