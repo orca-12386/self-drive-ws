@@ -60,8 +60,21 @@ ament_target_dependencies(parallel
   geometry_msgs
 )
 
+add_executable(clusterfuck src/pullintest.cpp)
+
+ament_target_dependencies(clusterfuck
+  rclcpp
+  nav_msgs
+  visualization_msgs
+  geometry_msgs
+  tf2 
+  tf2_ros 
+  tf2_geometry_msgs
+  geometry_msgs
+)
+
 # Install targets
-install(TARGETS  pullout pullin parallel
+install(TARGETS  pullout pullin parallel clusterfuck
   DESTINATION lib/${PROJECT_NAME})
 
 # Package export

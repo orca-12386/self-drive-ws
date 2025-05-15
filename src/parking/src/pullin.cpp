@@ -40,7 +40,7 @@ public:
 
         RCLCPP_INFO(this->get_logger(),"Lane Detector Initialized");
         odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-            "odom", 10, std::bind(&LaneAnalyzer::odom_callback, this, std::placeholders::_1));
+            "/odom/transformed", 10, std::bind(&LaneAnalyzer::odom_callback, this, std::placeholders::_1));
             
         map_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/map/white/local", 10,//rclcpp::QoS(10).transient_local(),
