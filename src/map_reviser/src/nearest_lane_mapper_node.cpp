@@ -138,7 +138,7 @@ struct CoordHash {
     const std::array<int, 2>& src,
     const nav_msgs::msg::OccupancyGrid::SharedPtr& map,
     std::vector<std::array<int, 2>>& connected,
-    double max_skip_distance = 3.0  // Default skip distance in map units
+    double max_skip_distance = 1.0  // Default skip distance in map units
     ) {
         connected.clear();
         

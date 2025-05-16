@@ -38,9 +38,9 @@ def generate_launch_description():
         color_sub_topic = "/zed_node/stereocamera/image_raw"
         camera_info_sub_topic = "/zed_node/stereocamera/camera_info"
     else:
-        depth_sub_topic = "/zed/zed_node/depth/depth_registered"
-        color_sub_topic = "/zed/zed_node/rgb/image_rect_color"
-        camera_info_sub_topic = "/zed/zed_node/rgb/camera_info"
+        depth_sub_topic = "/zed_node/depth/depth_registered"
+        color_sub_topic = "/zed_node/rgb/image_rect_color"
+        camera_info_sub_topic = "/zed_node/rgb/camera_info"
 
     if SIM:
         launch_world_robot = [
@@ -143,12 +143,12 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(transforms_dir,'launch','transforms.launch.py'))
         )
 
-        zed_no_tf_launch = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
-            launch_arguments={
-                "camera_model": "zed2i"
-            }.items()
-        )
+        # zed_no_tf_launch = IncludeLaunchDescription(
+        #     PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
+        #     launch_arguments={
+        #         "camera_model": "zed2i"
+        #     }.items()
+        # )
 
 
         lidar_tf = [
@@ -181,7 +181,7 @@ def generate_launch_description():
             declare_imu_topic,
             driver_launch,
             dlo_launch,
-            zed_no_tf_launch,
+            # zed_no_tf_launch,
         ]
 
 

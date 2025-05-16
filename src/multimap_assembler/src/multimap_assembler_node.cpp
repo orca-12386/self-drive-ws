@@ -77,6 +77,13 @@ private:
             for(int j=0;j<map_msg->info.width;j++) {
                 index = (i*map_msg->info.width) + j;
                 if(assemble_mode == 1) {
+                    if(map1->data[index] < map_msg->data[index] && map2->data[index] < map_msg->data[index]) {
+                        if(map1->data[index] >= map2->data[index]) {
+                            map_msg->data[index] = map1->data[index];
+                        } else {
+                            map_msg->data[index] = map2->data[index];
+                        }
+                    }
                     if(map1->data[index] > -1) {
                         map_msg->data[index] = map1->data[index];
                     }                    

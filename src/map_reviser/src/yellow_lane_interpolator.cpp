@@ -30,11 +30,11 @@ public:
     toggle_srv = this->create_service<example_interfaces::srv::SetBool>("toggle_lane_interpolation", std::bind(&YellowLineProcessor::toggle_interpolation, this, std::placeholders::_1, std::placeholders::_2));
 
     // Parameters
-    min_cluster_size_ = this->declare_parameter<int>("min_cluster_size", 100);
-    max_distance_between_centroids_ = this->declare_parameter<double>("max_distance_between_centroids", 7.5);
+    min_cluster_size_ = this->declare_parameter<int>("min_cluster_size", 5);
+    max_distance_between_centroids_ = this->declare_parameter<double>("max_distance_between_centroids", 5.0);
     max_angle_deviation_ = this->declare_parameter<double>("max_angle_deviation", 40.0 * M_PI / 180.0); // degrees to radians
-    max_distance_to_white_ = this->declare_parameter<double>("max_distance_to_white", 8.0);
-    min_distance_to_white_ = this->declare_parameter<double>("min_distance_to_white", 3.0);
+    max_distance_to_white_ = this->declare_parameter<double>("max_distance_to_white", 7.0);
+    min_distance_to_white_ = this->declare_parameter<double>("min_distance_to_white", 1.5);
 
     running = true;
   }

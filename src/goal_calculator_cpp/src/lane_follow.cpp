@@ -420,7 +420,7 @@ private:
         if(!running) {
             return;
         }
-        if(calculate_goal_angle(goal, goals) > 100) {
+        if(calculate_goal_angle(goal, goals) > 90) {
             goal_pose_msg->pose.position.x = goal[0];
             goal_pose_msg->pose.position.y = goal[1];
             goal_pose_msg->pose.orientation.z = sin(average_orientation / 2);
