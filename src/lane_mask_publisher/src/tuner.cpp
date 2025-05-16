@@ -43,6 +43,9 @@ public:
         setup_subscriptions();
         setup_publishers();
         setup_kernels();
+        if (!sim) {
+            init_trackbar_window();
+        }
 
         timer = this->create_wall_timer(
             std::chrono::milliseconds(40), std::bind(&LaneMaskPublisherNode::timer_callback, this));
@@ -73,11 +76,34 @@ private:
 
     void declare_parameters() {
         this->declare_parameter("sim", false);
-        this->declare_parameter("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
-        this->declare_parameter("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
+        this->declare_parameter("depth_sub_topic", "/zed_node/depth/depth_registered");
+        this->declare_parameter("color_sub_topic", "/zed_node/rgb/image_rect_color");
         
     }
+    void init_trackbar_window() {
+        cv::namedWindow("White HSV Tuner", cv::WINDOW_AUTOSIZE);
+        cv::createTrackbar("H low", "White HSV Tuner", &white_h_low, 180);
+        cv::createTrackbar("S low", "White HSV Tuner", &white_s_low, 255);
+        cv::createTrackbar("V low", "White HSV Tuner", &white_v_low, 255);
+        cv::createTrackbar("H high", "White HSV Tuner", &white_h_high, 180);
+        cv::createTrackbar("S high", "White HSV Tuner", &white_s_high, 255);
+        cv::createTrackbar("V high", "White HSV Tuner", &white_v_high, 255);
 
+        cv::namedWindow("Yellow HSV Tuner", cv::WINDOW_AUTOSIZE);
+        cv::createTrackbar("H low", "Yellow HSV Tuner", &yellow_h_low, 180);
+        cv::createTrackbar("S low", "Yellow HSV Tuner", &yellow_s_low, 255);
+        cv::createTrackbar("V low", "Yellow HSV Tuner", &yellow_v_low, 255);
+        cv::createTrackbar("H high", "Yellow HSV Tuner", &yellow_h_high, 180);
+        cv::createTrackbar("S high", "Yellow HSV Tuner", &yellow_s_high, 255);
+        cv::createTrackbar("V high", "Yellow HSV Tuner", &yellow_v_high, 255);
+    }
+
+    int white_h_low = 0, white_s_low = 0, white_v_low = 180;
+    int white_h_high = 180, white_s_high = 80, white_v_high = 255;
+
+
+    int yellow_h_low = 0, yellow_s_low = 0, yellow_v_low = 180;
+    int yellow_h_high = 180, yellow_s_high = 80, yellow_v_high = 255;
     void load_parameters() {
         sim = this->get_parameter("sim").as_bool();
 
@@ -91,11 +117,10 @@ private:
             yellow_mask_upper = cv::Scalar(179, 255, 255);
             target_v = -1;  // No brightness adjustment
         } else {
-            // white_mask_hsv_lower = cv::Scalar(0, 0, 180);//Night
-            white_mask_hsv_lower = cv::Scalar(0,0,255);//day
-            white_mask_hsv_upper = cv::Scalar(180, 80, 255); //34
-            yellow_mask_lower = cv::Scalar(0, 69, 41);
-            yellow_mask_upper = cv::Scalar(179, 255, 255);
+            white_mask_hsv_lower = cv::Scalar(0, 0, 180);
+            white_mask_hsv_upper = cv::Scalar(180, 80, 255);
+            yellow_mask_lower = cv::Scalar(37,83, 255);
+            yellow_mask_upper = cv::Scalar(180, 255, 255);
             target_v = 140; // Target brightness value
         }
     }
@@ -116,10 +141,9 @@ private:
     }
 
     void setup_kernels() {
-        int erosion_kernel_size = 5;
-        int dilation_kernel_size = 7;
-        erosion_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(erosion_kernel_size, erosion_kernel_size));
-        dilation_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(dilation_kernel_size, dilation_kernel_size));
+        int kernel_size = 3;
+        erosion_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(kernel_size, kernel_size));
+        dilation_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(kernel_size, kernel_size));
     }
 
     void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
@@ -136,6 +160,10 @@ private:
         if (rgb_recv && depth_recv) {
             create_and_publish_mask(rgb_image_msg, depth_image_msg);
         }
+        if(!rgb_recv)
+        RCLCPP_INFO(this->get_logger(), "NO Rgb");
+        if(depth_recv)
+        RCLCPP_INFO(this->get_logger(), "NO DEPTH");
     }
 
     void create_and_publish_mask(const sensor_msgs::msg::Image::SharedPtr& rgb, const sensor_msgs::msg::Image::SharedPtr& depth) {
@@ -147,6 +175,11 @@ private:
         depth_image = depth_image_ptr->image;
 
         if (rgb_image.empty() || depth_image.empty()) {
+            if(rgb_image.empty())
+            RCLCPP_INFO(this->get_logger(), "RGB Image not recieved");
+            if(depth_image.empty())
+            RCLCPP_INFO(this->get_logger(), "Depth Image not recieved");
+
             return;
         }
 
@@ -167,16 +200,39 @@ private:
         if (sim) {
             cv::inRange(image, white_mask_rgb_lower, white_mask_rgb_upper, mask);
         } else {
+            // white_mask_hsv_lower = cv::Scalar(white_h_low, white_s_low, white_v_low);
+            // white_mask_hsv_upper = cv::Scalar(white_h_high, white_s_high, white_v_high);
+
             cv::Mat bright_image = adjust_brightness(image, target_v);
             cv::cvtColor(bright_image, hsv, cv::COLOR_BGR2HSV);
             cv::inRange(hsv, white_mask_hsv_lower, white_mask_hsv_upper, mask);
             apply_morphology(mask);
+
+            // Optionally show the image for debugging
+            // cv::imshow("White HSV Tuner", mask);
+            // cv::waitKey(1);
         }
     }
 
+
     void generate_yellow_mask(const cv::Mat& image, cv::Mat& mask) {
         cv::cvtColor(image, hsv, cv::COLOR_RGB2HSV);
-        cv::inRange(hsv, yellow_mask_lower, yellow_mask_upper, mask);
+
+        if (sim) {
+            cv::inRange(image, yellow_mask_lower, yellow_mask_upper, mask);
+        } else {
+            yellow_mask_lower = cv::Scalar(yellow_h_low, yellow_s_low, yellow_v_low);
+            yellow_mask_upper = cv::Scalar(yellow_h_high, yellow_s_high, yellow_v_high);
+
+            cv::Mat bright_image = adjust_brightness(image, target_v);
+            cv::cvtColor(bright_image, hsv, cv::COLOR_BGR2HSV);
+            cv::inRange(hsv, yellow_mask_lower, yellow_mask_upper, mask);
+            apply_morphology(mask);
+
+            // Optionally show the image for debugging
+            cv::imshow("Yellow HSV Tuner", mask);
+            cv::waitKey(1);
+        }
     }
 
     void remove_horizon(cv::Mat& mask, const cv::Mat& depth_image) {

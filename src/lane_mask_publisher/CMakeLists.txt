@@ -28,12 +28,31 @@ ament_target_dependencies(lane_mask_publisher_node
   cv_bridge
   OpenCV
 )
+
+add_executable(tuner src/tuner.cpp)
+ament_target_dependencies(tuner
+  rclcpp
+  std_msgs
+  sensor_msgs
+  cv_bridge
+  OpenCV
+)
+
 target_link_libraries(lane_mask_publisher_node
   ${OpenCV_LIBRARIES}
 )
 
 # Install the executable
 install(TARGETS lane_mask_publisher_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+target_link_libraries(tuner
+  ${OpenCV_LIBRARIES}
+)
+
+# Install the executable
+install(TARGETS tuner
   DESTINATION lib/${PROJECT_NAME}
 )
 
