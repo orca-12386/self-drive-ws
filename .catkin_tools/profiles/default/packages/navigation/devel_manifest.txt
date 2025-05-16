@@ -1,4 +1,0 @@
-navigation
-/dvolume/devel/.private/navigation/share/navigation/cmake/navigationConfig-version.cmake /dvolume/devel/share/navigation/cmake/navigationConfig-version.cmake
-/dvolume/devel/.private/navigation/share/navigation/cmake/navigationConfig.cmake /dvolume/devel/share/navigation/cmake/navigationConfig.cmake
-/dvolume/devel/.private/navigation/lib/pkgconfig/navigation.pc /dvolume/devel/lib/pkgconfig/navigation.pc

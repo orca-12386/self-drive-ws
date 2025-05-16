@@ -30,15 +30,35 @@ ls -FAlh $XAUTH
 echo ""
 echo "Running docker..."
 
+# docker run -it \
+#     --env="DISPLAY=$DISPLAY" \
+#     --env="QT_X11_NO_MITSHM=1" \
+#     --volume="$MYPATH:/$VOLUME_NAME" \
+#     --env="XAUTHORITY=$XAUTH" \
+#     --volume="$XAUTH:$XAUTH" \
+#     --net=host \
+#     --privileged \
+#     ros:noetic \
+#     bash
+
 docker run -it \
-    --env="DISPLAY=$DISPLAY" \
     --env="QT_X11_NO_MITSHM=1" \
     --volume="$MYPATH:/$VOLUME_NAME" \
     --env="XAUTHORITY=$XAUTH" \
     --volume="$XAUTH:$XAUTH" \
-    --net=host \
     --privileged \
-    autonav-ros1 \
+    --device=/dev/ttyACM0 \
+    --device=/dev \
+    --gpus device=0 \
+    -e DISPLAY=$DISPLAY \
+    -v /tmp/.X11-unix:/tmp/.X11-unix \
+    --network host \
+    -e ROS_MASTER_URI=http://localhost:11311 \
+    -e "NVIDIA_DRIVER_CAPABILITIES=all" \
+    -e "NVIDIA_VISIBLE_DEVICES=all" \
+    ros:noetic \
     bash
+
+
 
 echo "Done."
