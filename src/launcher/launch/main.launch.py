@@ -299,49 +299,43 @@ def generate_launch_description():
 
 
     launch_goal_calculators = [
-        # Lane Follow
-        Node(
-            package='goal_calculator_cpp',
-            executable='lane_follower_node',
-            name='lane_follower_node'),
+        # # Lane Follow
         # Node(
         #     package='goal_calculator_cpp',
-        #     executable='lane_follow',
-        #     name='lane_follow',
-        #     parameters=[{
-        #         'config_file_path': os.path.join(get_package_share_directory('goal_calculator'), 'config','config.yaml')
-        #     }]),
+        #     executable='lane_follower_node',
+        #     name='lane_follower_node'
+        # ),
         # Lane Change
-        Node(
-            package='goal_calculator',
-            executable='lane_change_yellow',
-            name='lane_change_yellow',
-            output='screen',
-            parameters=[{
-                'config_file_path': os.path.join(
-                    get_package_share_directory('goal_calculator'), 
-                    'config', 
-                    'config.yaml'
-                )
-            }]
-        ),
-        # Stop
-        Node(
-            package='goal_calculator',
-            executable='stop_server',
-            name='stop_server',
-        ),
-        # Turn
-        Node(
-            package='goal_calculator',
-            executable='right_turn',
-            name='right_turn'
-        ),
-        Node(
-            package='goal_calculator',
-            executable='left_turn',
-            name='left_turn'
-        )
+        # Node(
+        #     package='goal_calculator',
+        #     executable='lane_change_yellow',
+        #     name='lane_change_yellow',
+        #     output='screen',
+        #     parameters=[{
+        #         'config_file_path': os.path.join(
+        #             get_package_share_directory('goal_calculator'), 
+        #             'config', 
+        #             'config.yaml'
+        #         )
+        #     }]
+        # ),
+        # # Stop
+        # Node(
+        #     package='goal_calculator',
+        #     executable='stop_server',
+        #     name='stop_server',
+        # ),
+        # # Turn
+        # Node(
+        #     package='goal_calculator',
+        #     executable='right_turn',
+        #     name='right_turn'
+        # ),
+        # Node(
+        #     package='goal_calculator',
+        #     executable='left_turn',
+        #     name='left_turn'
+        # )
     ]
 
 
@@ -391,7 +385,7 @@ def generate_launch_description():
             executable='robot_pose_publisher_node',
             name='robot_pose_publisher',
             parameters=[{
-                'map_sub_topic': '/map'
+                'map_sub_topic': '/map/yellow'
             }]       
         ),
     ]

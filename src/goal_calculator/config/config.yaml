@@ -20,7 +20,7 @@ dbscan_min_samples: 3
 
 midpoint_tolerance: 0.1
 
-minimum_points: 150
+minimum_points: 10
 
 lane_change_goal_tolerance: 0.5
 

@@ -14,20 +14,18 @@ from std_msgs.msg import Bool as LaneChangeStatus
 
 # These are your package-specific imports.
 from goal_calculator.ros2_wrapper import Message, Subscription, Publisher, Config, NodeGlobal
-import goal_calculator.lane_follow as util
+import goal_calculator.util as util
 from sklearn.cluster import DBSCAN
 from scipy.spatial import cKDTree
 import statistics
 from collections import defaultdict
+from scipy.spatial.transform import Rotation as R
 
-
-# def yaw_to_quaternion(yaw):
-#     """Converts a yaw angle (in radians) to a quaternion."""
-#     qx = 0.0
-#     qy = 0.0
-#     qz = math.sin(yaw / 2)
-#     qw = math.cos(yaw / 2)
-#     return qx, qy, qz, qw
+def get_yaw_from_odometry(odom_msg: Odometry) -> float:
+    q = odom_msg.pose.pose.orientation
+    r = R.from_quat([q.x, q.y, q.z, q.w])
+    _, _, yaw = r.as_euler('xyz', degrees=False)
+    return yaw
 
 def extrapolate_points(x1, y1, x2, y2, distance):
     dx, dy = x2-x1, y2-y1
@@ -48,7 +46,6 @@ class LaneChange(Node):
         Config.read_config(self.get_parameter('config_file_path').value)
         NodeGlobal.log_info("Config read: "+self.get_parameter('config_file_path').value)
 
-
         self._action_server = ActionServer(
             self,
             LaneChangeAction,
@@ -57,18 +54,36 @@ class LaneChange(Node):
             execute_callback=self.execute_callback_wrapper
         )
 
-        # Create subscriptions.
+        # Initialize message storage
+        self.latest_map_msg = None
+        self.latest_odom_msg = None
+        self.odom_history = []
+        self.max_odom_history = 20  # Store last 20 odometry messages
+
+        # Create subscriptions with direct callbacks
+        self.map_subscription = self.create_subscription(
+            OccupancyGrid,
+            'map/yellow/local/interp',
+            self.map_callback,
+            10
+        )
+        
+        self.odom_subscription = self.create_subscription(
+            Odometry,
+            'odom',
+            self.odom_callback,
+            10
+        )
+
+        # Keep the existing subscription manager for compatibility
         subscription_info = {
             "map": ["map/yellow/local/interp", OccupancyGrid],
             "odom": ["odom", Odometry],
-            "robot_pose_global": ["map/robot_pose_global", PoseStamped],
-            "robot_pose_grid": ["map/robot_pose_grid", PoseStamped],
-            "robot_orientation": ["map/robot_orientation", Float64, 10]
         }
         Subscription.create_subscriptions(subscription_info)
 
         publisher_info = {
-            "goal_pose": ["move_base_simple/goal", PoseStamped],
+            "goal_pose": ["goal_pose", PoseStamped],
             "lane_change_status": ["lane_change_status", LaneChangeStatus]
         }
         Publisher.create_publishers(publisher_info)
@@ -79,11 +94,54 @@ class LaneChange(Node):
         self.timer = self.create_timer(0.1, self.publish_status_periodically)
         self.timer2 = self.create_timer(2, self.add_goal_pose)
 
+    def map_callback(self, msg):
+        """Handle new map messages"""
+        self.latest_map_msg = msg
+        # You could perform immediate analysis here if needed
+        NodeGlobal.log_info("Received new map data")
 
+    def odom_callback(self, msg):
+        """Handle new odometry messages"""
+        self.latest_odom_msg = msg
+        self.odom_history.append(msg)
+        
+        # Keep history at a reasonable size
+        if len(self.odom_history) > self.max_odom_history:
+            self.odom_history = self.odom_history[-self.max_odom_history:]
+            
+        # You could trigger immediate actions based on new position if needed
+        # For example, check if goal reached when in a lane change operation
+        if self.lane_change_active:
+            if hasattr(self, 'current_goal_pose') and self.current_goal_pose is not None:
+                curr_coords = self.get_robot_coords_global()
+                if curr_coords and self.goal_reached(curr_coords, self.current_goal_pose):
+                    NodeGlobal.log_info("Goal reached based on new odometry data!")
+                    # The actual success handling happens in the execute callback
 
+    def get_robot_coords_global(self):
+        if self.latest_odom_msg is None:
+            return None
+        robot_pose_global = self.latest_odom_msg.pose
+        robot_coords_global = (robot_pose_global.pose.position.x, robot_pose_global.pose.position.y)
+        return robot_coords_global
+    
+    def get_robot_coords_grid(self):
+        if self.latest_map_msg is None:
+            return None
+        resolution = self.latest_map_msg.info.resolution
+        robot_coords_global = self.get_robot_coords_global()
+        if robot_coords_global is None:
+            return None
+        robot_coords_grid = (
+            (robot_coords_global[0] - self.latest_map_msg.info.origin.position.x) / resolution, 
+            (robot_coords_global[1] - self.latest_map_msg.info.origin.position.y) / resolution
+        )
+        return robot_coords_grid
+    
     def add_goal_pose(self):
-        robot_coords_global = Subscription.subs["robot_pose_global"].get_latest_data()
-        self.goals.append(np.array(robot_coords_global))
+        robot_coords_global = self.get_robot_coords_global()
+        if robot_coords_global is not None:
+            self.goals.append(np.array(robot_coords_global))
 
     def publish_status(self, status_bool):
         status_msg = LaneChangeStatus()
@@ -96,6 +154,10 @@ class LaneChange(Node):
     def goal_callback(self, goal_request):
         self.get_logger().info(f"Received goal request: lane_change = {goal_request.data}")
         if goal_request.data == 1:
+            if self.latest_map_msg is None or self.latest_odom_msg is None:
+                self.get_logger().error("Cannot accept lane change - missing map or odometry data")
+                return GoalResponse.REJECT
+                
             self.get_logger().info("Lane change action received")
             self.lane_change_active = True
             return GoalResponse.ACCEPT
@@ -107,8 +169,14 @@ class LaneChange(Node):
 
     async def async_execute_callback(self, goal_handle):
         NodeGlobal.log_info("Lane change initializing")
-        initial_coords = Subscription.subs["robot_pose_grid"].get_latest_data()
+
+        initial_coords = self.get_robot_coords_grid()
         
+        if initial_coords is None:
+            NodeGlobal.log_error("Failed to get robot coordinates")
+            goal_handle.abort()
+            return LaneChangeAction.Result()
+            
         try:
             goal_pose = self.get_goal_pose(initial_coords)
             
@@ -117,19 +185,29 @@ class LaneChange(Node):
                 goal_handle.abort()
                 return LaneChangeAction.Result()
 
+            self.current_goal_pose = goal_pose
             self.publish_goal(goal_pose)
 
             while rclpy.ok():
-                curr_coords = Subscription.subs["robot_pose_global"].get_latest_data()
+                curr_coords = self.get_robot_coords_global()
+                if curr_coords is None:
+                    NodeGlobal.log_warn("No current coordinates available, waiting...")
+                    await asyncio.sleep(0.1)
+                    continue
+                    
                 if self.goal_reached(curr_coords, goal_pose):
                     NodeGlobal.log_info("Lane change complete.")
                     self.lane_change_active = False
                     self.publish_status(False)
+                    self.current_goal_pose = None
                     goal_handle.succeed()
                     return LaneChangeAction.Result()
                 await asyncio.sleep(0.1)
         except Exception as e:
             NodeGlobal.log_error(f"Error during lane change execution: {str(e)}")
+            self.lane_change_active = False
+            self.publish_status(False)
+            self.current_goal_pose = None
             goal_handle.abort()
             return LaneChangeAction.Result()
 
@@ -142,19 +220,25 @@ class LaneChange(Node):
 
     def create_goal_pose(self, goal):
         goal_pose = PoseStamped()
-        goal_pose.header.frame_id = "odom"
+        goal_pose.header.frame_id = "map"
         goal_pose.header.stamp = self.get_clock().now().to_msg()
         goal_pose.pose.position.x = goal[0]
         goal_pose.pose.position.y = goal[1]
         goal_pose.pose.position.z = 0.0
-        robot_orientation_data = Subscription.subs["robot_orientation"].get_all_data()
-        # NodeGlobal.log_info(robot_orientation_data)
-        if not robot_orientation_data:
-            # Fallback if no orientation data is available
-            avg_orientation = 0.0
-            NodeGlobal.log_error("No orientation data available, using default 0.0")
+        
+        # Use the stored odometry history for orientation calculation
+        if len(self.odom_history) > 5:
+            recent_odom = self.odom_history[:-5]  # Skip the most recent 5 as they might be noisy
+            robot_orientation_data = [get_yaw_from_odometry(x) for x in recent_odom]
+            if robot_orientation_data:
+                avg_orientation = statistics.fmean(robot_orientation_data)
+            else:
+                avg_orientation = 0.0
+                NodeGlobal.log_warn("No orientation data in history, using default 0.0")
         else:
-            avg_orientation = statistics.fmean(robot_orientation_data)
+            avg_orientation = 0.0
+            NodeGlobal.log_warn("Not enough orientation data in history, using default 0.0")
+            
         goal_pose.pose.orientation.x = 0.0
         goal_pose.pose.orientation.y = 0.0
         goal_pose.pose.orientation.z = math.sin(avg_orientation / 2)
@@ -188,10 +272,15 @@ class LaneChange(Node):
             return result
 
         try:
-            map_data = Subscription.subs["map"].get_latest_data()
-            if map_data is None:
+            if self.latest_map_msg is None:
                 NodeGlobal.log_error("No map data available")
                 return None
+                
+            # Convert map message to data array for clustering
+            map_data = np.array(self.latest_map_msg.data).reshape(
+                self.latest_map_msg.info.height, 
+                self.latest_map_msg.info.width
+            )
                 
             clusters = get_clusters(map_data)
             NodeGlobal.log_info("Cluster shapes: " + str([cluster.shape for cluster in clusters]))
@@ -201,22 +290,9 @@ class LaneChange(Node):
                 NodeGlobal.log_error("Not enough points in cluster detected")
                 return None
 
-            # clusters_with_distance = []
-            # for cluster in clusters:
-            #     tree = cKDTree(cluster)
-            #     distance, _ = tree.query(robot_coords_grid, k=1)
-            #     clusters_with_distance.append((distance, cluster))
-            
-            # # Sort by distance (furthest first)
-            # clusters_with_distance.sort(key=lambda x: x[0], reverse=True)
-            # # furthest_cluster_distance, furthest_cluster = clusters_with_distance[0]
-            # closest_cluster_distance, closest_cluster = clusters_with_distance[-1]
-            
-            # tree = cKDTree(furthest_cluster)
             cluster = clusters[0]
             tree = cKDTree(cluster)
             _, nearest_index = tree.query(robot_coords_grid, k=1)
-            # first_point = furthest_cluster[nearest_index]
             first_point = cluster[nearest_index]
             
             def find_furthest_point(cluster, start, max_search_distance=Config.config["max_search_distance"]):
@@ -270,18 +346,7 @@ class LaneChange(Node):
                     
             first_point = find_furthest_point(cluster, first_point)
             goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], first_point[0], first_point[1], Config.config["extrapolate_distance"])
-            # distance_lane2_bot = util.calculate_distance(robot_coords_grid, first_point2)
-            # distance_goal_bot = util.calculate_distance(robot_coords_grid, first_point)
             goal_coords = np.array(util.convert_to_global_coords(goal_point))
-            # if distance_goal_bot < 0.001:
-            #     NodeGlobal.log_warn("Goal point too close to robot, using direct point")
-            #     goal_coords = np.array(util.convert_to_global_coords(first_point))
-            # else:
-            #     ratio = Config.config["offset_goal_ratio"] * distance_lane2_bot / distance_goal_bot
-            #     x = ((1 - ratio) * first_point[0] + (ratio) * robot_coords_grid[0])
-            #     y = ((1 - ratio) * first_point[1] + (ratio) * robot_coords_grid[1])
-            #     goal_coords = [x, y]
-            #     goal_coords = np.array(util.convert_to_global_coords(goal_coords))
                 
             return self.create_goal_pose(goal_coords)
             

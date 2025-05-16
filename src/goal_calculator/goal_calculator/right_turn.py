@@ -19,7 +19,7 @@ def quat_to_euler(quat):
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local/near', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.action_server = ActionServer(self, RightTurn, 'RightTurn', execute_callback=self.execute_callback)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -82,21 +82,21 @@ class RightTurnNode(Node):
             x, y = queue.popleft()
             if self.map_data[y, x] > 0:
                 
-                valid = False
-                bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+                # valid = False
+                # bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
 
-                if math.pi / 4 <= bot_yaw<= 3 * math.pi / 4:  
-                    valid = y - 2 < bot_y < y + 2
-                elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:  
-                    valid = y - 2 < bot_y < y + 2
-                elif (-math.pi <= bot_yaw < -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):  
-                    valid = x - 2 < bot_x < x + 2
-                elif -math.pi / 4 < bot_yaw < math.pi / 4:  
-                    valid = x - 2 < bot_x < x + 2
+                # if math.pi / 4 <= bot_yaw<= 3 * math.pi / 4:  
+                #     valid = y - 2 < bot_y < y + 2
+                # elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:  
+                #     valid = y - 2 < bot_y < y + 2
+                # elif (-math.pi <= bot_yaw < -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):  
+                #     valid = x - 2 < bot_x < x + 2
+                # elif -math.pi / 4 < bot_yaw < math.pi / 4:  
+                #     valid = x - 2 < bot_x < x + 2
 
-                if valid:
-                    self.get_logger().info(f"Right Lane Found: ({x}, {y})")
-                    return (x, y)
+                # if valid:
+                #     self.get_logger().info(f"Right Lane Found: ({x}, {y})")
+                return (x, y)
 
             for dx, dy in directions:
                 nx, ny = x + dx, y + dy
@@ -114,7 +114,7 @@ class RightTurnNode(Node):
 
         all_directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
         new_directions = list()
-        skip_dist = 1.5 # in metres
+        skip_dist = 1.0 # in metres
         skip_dist = skip_dist / self.map_resolution # grid coords
         for i in range(2, int(skip_dist)+1):
             for j in range(len(all_directions)):

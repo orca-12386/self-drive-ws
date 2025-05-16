@@ -29,7 +29,7 @@ private:
         geometry_msgs::msg::TransformStamped t;
         t.header.stamp = this->get_clock()->now();
         t.header.frame_id = "map";
-        t.child_frame_id = "robot/base_link";
+        t.child_frame_id = "base_link";
 
         t.transform.translation.x = msg->pose.pose.position.x;
         t.transform.translation.y = - msg->pose.pose.position.y; // Negate Y
@@ -41,7 +41,7 @@ private:
 
         // Create transformed Odometry message
         nav_msgs::msg::Odometry transformed_odom = *msg;
-        transformed_odom.child_frame_id = "robot/base_link";
+        transformed_odom.child_frame_id = "base_link";
         transformed_odom.header.frame_id = "map";
         transformed_odom.pose.pose.position.x *= 1.0;
         transformed_odom.pose.pose.position.y *= -1.0;  // Invert Y position
