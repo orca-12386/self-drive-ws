@@ -9,6 +9,7 @@ from collections import deque
 import math
 from interfaces.action import GoalAction as RightTurn
 from scipy.spatial.transform import Rotation
+from sklearn.cluster import DBSCAN
 
 def euler_to_quat(euler):
     return Rotation.from_euler('xyz', euler).as_quat()
@@ -19,7 +20,7 @@ def quat_to_euler(quat):
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local/near', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.action_server = ActionServer(self, RightTurn, 'RightTurn', execute_callback=self.execute_callback)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -62,48 +63,51 @@ class RightTurnNode(Node):
         euler = quat_to_euler([quat.x, quat.y, quat.z, quat.w])
         return euler[2]
 
-    def find_right_lane_point(self):
+    def find_right_lane_point(self, min_cluster_size=15, eps=1.5):
         if self.bot_position is None:
             self.get_logger().info("Odometry Not Received")
             return
         if self.map_data is None:
             self.get_logger().info("Map Data Not Received")
             return
-        
-        self.get_logger().info("Searching for right lane")
+
+        self.get_logger().info("Finding Right Lane Point")
+
+        occupied_points = np.argwhere(self.map_data > 0)
+        if len(occupied_points) == 0:
+            self.get_logger().info("No occupied points found in map")
+            return
+
+        clustering = DBSCAN(eps=eps, min_samples=min_cluster_size).fit(occupied_points)
+        labels = clustering.labels_
+
+        unique_labels, counts = np.unique(labels, return_counts=True)
+        valid_clusters = [label for label, count in zip(unique_labels, counts)
+                          if label != -1 and count >= min_cluster_size]
+
+        if not valid_clusters:
+            self.get_logger().info("No valid clusters found")
+            return
+
         bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
-        start = (bot_x, bot_y)
-        queue = deque([start])
-        visited = {start}
+        bot_point = np.array([bot_y, bot_x]) 
 
-        directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
-    
-        while queue:
-            x, y = queue.popleft()
-            if self.map_data[y, x] > 0:
-                
-                # valid = False
-                # bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        min_dist = float('inf')
+        nearest_point = None
+        for label in valid_clusters:
+            cluster_points = occupied_points[labels == label]
+            dists = np.linalg.norm(cluster_points - bot_point, axis=1)
+            idx = np.argmin(dists)
+            if dists[idx] < min_dist:
+                min_dist = dists[idx]
+                nearest_point = tuple(cluster_points[idx][::-1]) 
 
-                # if math.pi / 4 <= bot_yaw<= 3 * math.pi / 4:  
-                #     valid = y - 2 < bot_y < y + 2
-                # elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:  
-                #     valid = y - 2 < bot_y < y + 2
-                # elif (-math.pi <= bot_yaw < -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):  
-                #     valid = x - 2 < bot_x < x + 2
-                # elif -math.pi / 4 < bot_yaw < math.pi / 4:  
-                #     valid = x - 2 < bot_x < x + 2
-
-                # if valid:
-                #     self.get_logger().info(f"Right Lane Found: ({x}, {y})")
-                return (x, y)
-
-            for dx, dy in directions:
-                nx, ny = x + dx, y + dy
-                if (0 <= nx < self.map_width and 0 <= ny < self.map_height and (nx, ny) not in visited):
-                    queue.append((nx, ny))
-                    visited.add((nx, ny))
-        return None
+        if nearest_point:
+            self.get_logger().info(f"Right Lane Found at point: {nearest_point}")
+            return nearest_point
+        else:
+            self.get_logger().info("No right lane point found in clusters")
+            return None
 
     def bfs_farthest_lane_point(self, start):
         if start is None:
@@ -153,7 +157,7 @@ class RightTurnNode(Node):
     def calculate_goal(self):
         if self.bot_position is None or self.map_data is None:
             return
-        self.right_lane_point = self.find_right_lane_point()
+        self.right_lane_point = self.find_right_lane_point()  
 
         if self.right_lane_point is None:
             return
@@ -175,7 +179,7 @@ class RightTurnNode(Node):
 
         goal_x, goal_y = self.map_to_world(self.farthest_point[0], self.farthest_point[1])
 
-        right_lane_world_x, right_lane_world_y = self.map_to_world(self.right_lane_point[0], self.  right_lane_point[1])
+        right_lane_world_x, right_lane_world_y = self.map_to_world(self.right_lane_point[0], self.right_lane_point[1])
         offset_distance = math.sqrt((right_lane_world_x - self.bot_position.x)**2 + (right_lane_world_y - self.bot_position.y)**2)
 
         self.get_logger().info(f"Offset Distance: {offset_distance}")
@@ -248,7 +252,7 @@ def main(args=None):
     try:
         executor.spin()
     except KeyboardInterrupt:
-        self.get_logger().info("Keyboard Interrupt")
+        node.get_logger().info("Keyboard Interrupt")
     finally:
         executor.shutdown()
         node.destroy_node()
