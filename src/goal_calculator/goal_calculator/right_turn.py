@@ -20,7 +20,7 @@ def quat_to_euler(quat):
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local/near', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.action_server = ActionServer(self, RightTurn, 'RightTurn', execute_callback=self.execute_callback)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -63,7 +63,7 @@ class RightTurnNode(Node):
         euler = quat_to_euler([quat.x, quat.y, quat.z, quat.w])
         return euler[2]
 
-    def find_right_lane_point(self, min_cluster_size=15, eps=1.5):
+    def find_right_lane_point(self, min_cluster_size=15, eps=25):
         if self.bot_position is None:
             self.get_logger().info("Odometry Not Received")
             return
@@ -157,7 +157,7 @@ class RightTurnNode(Node):
     def calculate_goal(self):
         if self.bot_position is None or self.map_data is None:
             return
-        self.right_lane_point = self.find_right_lane_point()  
+        self.right_lane_point = self.find_right_lane_point(eps = 1.0/self.map_resolution)  
 
         if self.right_lane_point is None:
             return
