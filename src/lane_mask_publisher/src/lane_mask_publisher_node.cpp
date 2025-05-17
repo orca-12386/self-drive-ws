@@ -45,7 +45,7 @@ public:
         setup_kernels();
 
         timer = this->create_wall_timer(
-            std::chrono::milliseconds(40), std::bind(&LaneMaskPublisherNode::timer_callback, this));
+            std::chrono::milliseconds(100), std::bind(&LaneMaskPublisherNode::timer_callback, this));
     };
 
 private:
@@ -73,8 +73,8 @@ private:
 
     void declare_parameters() {
         this->declare_parameter("sim", false);
-        this->declare_parameter("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
-        this->declare_parameter("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
+        this->declare_parameter("depth_sub_topic", "/zed_node/depth/depth_registered");
+        this->declare_parameter("color_sub_topic", "/zed_node/rgb/image_rect_color");
         
     }
 
@@ -92,10 +92,22 @@ private:
             target_v = -1;  // No brightness adjustment
         } else {
             // white_mask_hsv_lower = cv::Scalar(0, 0, 180);//Night
-            white_mask_hsv_lower = cv::Scalar(0,0,255);//day
-            white_mask_hsv_upper = cv::Scalar(180, 80, 255); //34
-            yellow_mask_lower = cv::Scalar(0, 69, 41);
-            yellow_mask_upper = cv::Scalar(179, 255, 255);
+            // // white_mask_hsv_lower = cv::Scalar(0,0,255);//day
+            // white_mask_hsv_upper = cv::Scalar(180, 80, 255); //34
+
+            // Day
+            white_mask_hsv_lower = cv::Scalar(0, 0, 255);
+            white_mask_hsv_upper = cv::Scalar(77, 30, 255); //34
+
+            //Night
+            // yellow_mask_lower = cv::Scalar(0, 69, 41);
+            // yellow_mask_upper = cv::Scalar(179, 255, 255);
+
+            // Day
+            // yellow_mask_lower = cv::Scalar(50, 0, 221); 
+            yellow_mask_lower = cv::Scalar(50, 0, 255); 
+            yellow_mask_upper = cv::Scalar(180, 255, 255);
+            
             target_v = 140; // Target brightness value
         }
     }
@@ -156,6 +168,7 @@ private:
         }
 
         generate_white_mask(rgb_image, white_mask);
+        remove_horizon(white_mask, depth_image);
         publish_mask(white_mask, white_mask_pub);
 
         generate_yellow_mask(rgb_image, yellow_mask);
@@ -175,8 +188,10 @@ private:
     }
 
     void generate_yellow_mask(const cv::Mat& image, cv::Mat& mask) {
-        cv::cvtColor(image, hsv, cv::COLOR_RGB2HSV);
-        cv::inRange(hsv, yellow_mask_lower, yellow_mask_upper, mask);
+            cv::Mat bright_image = adjust_brightness(image, target_v);
+            cv::cvtColor(bright_image, hsv, cv::COLOR_BGR2HSV);
+            cv::inRange(hsv, yellow_mask_lower, yellow_mask_upper, mask);
+            apply_morphology(mask);
     }
 
     void remove_horizon(cv::Mat& mask, const cv::Mat& depth_image) {
