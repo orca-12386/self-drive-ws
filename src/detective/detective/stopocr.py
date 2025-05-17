@@ -22,10 +22,12 @@ class TextDetectorNode(Node):
         self.reader = easyocr.Reader(['en'], gpu=True)
 
         # Image topics
-        self.create_subscription(Image, '/zed_node/rgb/image_rect_color', self.image_callback, 10)
-        self.create_subscription(Image, '/zed_node/depth/depth_registered', self.depth_callback, 10)
+
+        self.create_subscription(Image, '/zed_node/stereocamera/image_raw', self.image_callback, 10)
+        self.create_subscription(Image, '/zed_node/stereocamera/depth/image_raw', self.depth_callback, 10)
 
         self.depth_image = None
+        self.image_pub = self.create_publisher(Image, 'annotated_image', 10)
         self.publisher = self.create_publisher(PointStamped, '/detected_text_info', 10)
 
         self.get_logger().info("TextDetectorNode initialized")
@@ -33,22 +35,36 @@ class TextDetectorNode(Node):
     def depth_callback(self, msg):
         try:
             self.depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+            self.get_logger().info(f"Depth Image recieved:")
         except Exception as e:
             self.get_logger().error(f"Depth image conversion failed: {e}")
 
     def image_callback(self, msg):
         try:
             color_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
+            self.get_logger().info(f"Color Image received:")
         except Exception as e:
             self.get_logger().error(f"Image conversion failed: {e}")
             return
-
         results = self.reader.readtext(color_image)
-
+        self.get_logger().info(f"Detected text: {results}")
         for (bbox, text, confidence) in results:
             if text.strip().lower() == self.target_text.lower():
-                # bbox = [top_left, top_right, bottom_right, bottom_left]
                 pts = np.array(bbox).astype(int)
+
+                # Compute bounding rectangle
+                x, y, w, h = cv2.boundingRect(pts)
+
+                # Slightly increase the size of the rectangle (padding)
+                pad = 10
+                x = max(0, x - pad)
+                y = max(0, y - pad)
+                w = w + 2 * pad
+                h = h + 2 * pad
+
+                # Draw a thick rectangle (thickness=3)
+                cv2.rectangle(color_image, (x, y), (x + w, y + h), color=(0, 255, 0), thickness=3)
+
                 cx = int(np.mean(pts[:, 0]))
                 cy = int(np.mean(pts[:, 1]))
 
@@ -59,14 +75,15 @@ class TextDetectorNode(Node):
                     self.get_logger().warn("No depth info available")
 
                 point_msg = PointStamped()
-                point_msg.header = msg.header
+                point_msg.header.stamp = self.get_clock().now().to_msg()
+                point_msg.header.frame_id = "map"
                 point_msg.point.x = float(cx)
                 point_msg.point.y = float(cy)
                 point_msg.point.z = depth if depth is not None else -1.0
-
+                
                 self.publisher.publish(point_msg)
-                self.get_logger().info(f"Detected '{text}' at ({cx}, {cy}) with depth {depth}")
-                break  # Stop after first match
+                break  # Stop after fi
+        self.image_pub.publish(self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8"))
 
 def main(args=None):
     rclpy.init(args=args)
