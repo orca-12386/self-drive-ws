@@ -1,3 +1,6 @@
+
+// #define DEBUG
+
 #include <rclcpp/rclcpp.hpp>
 #include "rclcpp/qos.hpp"
 #include <std_msgs/msg/float64.hpp>
@@ -22,9 +25,6 @@
 #include <mutex>
 #include <tf2/LinearMath/Quaternion.h>  // Added for quaternion handling
 #include <tf2/LinearMath/Matrix3x3.h>   // Added for RPY conversion
-
-// Uncomment to enable full debug output
-#define DEBUG_OUTPUT
 
 
 struct BotPosition {
@@ -109,21 +109,13 @@ public:
     cos_pitch(cos(pitch)),
     sin_pitch(sin(pitch))
     {
-        // Enable debug logging levels
-        auto logger = this->get_logger();
-        rcutils_logging_set_logger_level(
-            logger.get_name(), RCUTILS_LOG_SEVERITY_DEBUG);
-            
         RCLCPP_INFO(this->get_logger(), "height_mask_publisher_node started");
         
         // Define object types with their height ranges
         object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
         object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.6f, 1.2f));
-        // object_types.push_back(ObjectType("stop_sign", "stop_sign", 1.4f, 1.8f));
-        object_types.push_back(ObjectType("stop_sign", "stop_sign", 1.8f, 2.2f));
-        
-        // Call debug stats on startup
-        debug_dump_stats();
+        object_types.push_back(ObjectType("stop_sign", "stop_sign", 1.4f, 1.8f));
+        object_types.push_back(ObjectType("pedestrian", "pedestrian", 1.8f, 2.2f));
         
         // Create subscriptions
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
@@ -139,7 +131,7 @@ public:
             std::bind(&HeightMaskPublisherNode::cameraInfoCallback, this, std::placeholders::_1));
     
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/odom", 10, 
+            "/odometry", 10, 
             std::bind(&HeightMaskPublisherNode::odomCallback, this, std::placeholders::_1));
         
         // Initialize flags
@@ -214,23 +206,12 @@ private:
         RCLCPP_INFO(this->get_logger(), str.c_str());
     }
 
-    // Convert probability to log odds
     static double logodds_to_prob(double probability) {
         return std::log(probability / (1.0 - probability));
     }
 
-    // Convert log odds to probability
     static double prob_to_logodds(double log_odds) {
         return 1.0 - (1.0 / (1.0 + std::exp(log_odds)));
-    }
-    
-    // Debug print function for obstacles
-    void debug_print_obstacle(const std::string& label, const Point& point, double height, const std::string& type) {
-        RCLCPP_INFO(
-            this->get_logger(),
-            "Obstacle: %s at (%.2f, %.2f, %.2f) height: %.2f type: %s",
-            label.c_str(), point.x, point.y, point.z, height, type.c_str()
-        );
     }
     
     Point convert_depth_to_point(double u, double v, const double& depth, const sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
@@ -374,21 +355,11 @@ private:
         for (size_t i = 1; i < max_obstacle_heights.size(); i++) {
             float max_height = max_obstacle_heights[i];
             
-            // Debug print the detected obstacle
-            if (max_height > 0.1) {  // Only debug obstacles with some height
-                Point dummy_point = {0, 0, 0};  // We'll just log the height here
-                std::string detected_type = "unknown";
-                
-                for (const auto& obj_type : object_types) {
-                    if (max_height >= obj_type.min_height && max_height <= obj_type.max_height) {
-                        obstacle_types[i] = obj_type.name;
-                        detected_type = obj_type.name;
-                        break;
-                    }
+            for (const auto& obj_type : object_types) {
+                if (max_height >= obj_type.min_height && max_height <= obj_type.max_height) {
+                    obstacle_types[i] = obj_type.name;
+                    break;
                 }
-                
-                debug_print_obstacle("Raw Obstacle " + std::to_string(i), 
-                                   dummy_point, max_height, detected_type);
             }
         }
         
@@ -467,16 +438,7 @@ private:
                         double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
                         if (dist < radius) {
                             // Update log odds for detection
-                            double old_logodds = entry.second;
                             entry.second += logodds_to_prob(detection_prob);
-                            double new_prob = prob_to_logodds(entry.second);
-                            
-                            // Debug log the update
-                            RCLCPP_INFO(this->get_logger(), 
-                                "Updated %s at (%.2f, %.2f, %.2f): logodds %.2f->%.2f, prob %.2f",
-                                obj_type.name.c_str(), point.x, point.y, point.z,
-                                old_logodds, entry.second, new_prob);
-                                
                             // Update position to latest
                             entry.first = point;
                             matched = true;
@@ -485,15 +447,7 @@ private:
                     }
                     if (!matched) {
                         // New detection, initialize at 0.5 (log odds = 0)
-                        double initial_logodds = 0.0 + logodds_to_prob(detection_prob);
-                        double initial_prob = prob_to_logodds(initial_logodds);
-                        
-                        RCLCPP_INFO(this->get_logger(), 
-                            "New %s at (%.2f, %.2f, %.2f): initial logodds=%.2f, prob=%.2f",
-                            obj_type.name.c_str(), point.x, point.y, point.z,
-                            initial_logodds, initial_prob);
-                            
-                        logodds_map[obj_type.name].emplace_back(point, initial_logodds);
+                        logodds_map[obj_type.name].emplace_back(point, 0.0 + logodds_to_prob(detection_prob));
                     }
                 }
             }
@@ -522,34 +476,14 @@ private:
                 }
                 if (!found) {
                     // Not detected this cycle, decrease log odds
-                    double old_logodds = entry.second;
                     entry.second += logodds_to_prob(miss_prob);
-                    double new_prob = prob_to_logodds(entry.second);
-                    
-                    RCLCPP_INFO(this->get_logger(), 
-                        "Missing %s at (%.2f, %.2f, %.2f): logodds %.2f->%.2f, prob %.2f",
-                        obj_type.name.c_str(), entry.first.x, entry.first.y, entry.first.z,
-                        old_logodds, entry.second, new_prob);
                 }
             }
 
             // Only publish centroids with probability > threshold
             std::vector<Centroid3D> confirmed_centroids;
-            
-            // Debug logging for this object type
-            RCLCPP_INFO(this->get_logger(), "--- %s Detection Debug ---", obj_type.name.c_str());
-            RCLCPP_INFO(this->get_logger(), "Raw centroids detected: %zu", type_centroids[obj_type.name].size());
-            RCLCPP_INFO(this->get_logger(), "Tracked objects: %zu", logodds_map[obj_type.name].size());
-            
             for (const auto& entry : logodds_map[obj_type.name]) {
                 double prob = prob_to_logodds(entry.second);
-                
-                // Debug log for each tracked object
-                RCLCPP_INFO(this->get_logger(), "  Object at (%.2f, %.2f, %.2f): log_odds=%.2f, prob=%.2f %s", 
-                           entry.first.x, entry.first.y, entry.first.z,
-                           entry.second, prob,
-                           (prob > threshold_prob) ? "[CONFIRMED]" : "");
-                
                 if (prob > threshold_prob) {
                     Centroid3D confirmed;
                     confirmed.x = entry.first.x;
@@ -559,8 +493,6 @@ private:
                     confirmed_centroids.push_back(confirmed);
                 }
             }
-            
-            RCLCPP_INFO(this->get_logger(), "Confirmed %s objects: %zu", obj_type.name.c_str(), confirmed_centroids.size());
 
             // Publish mask
             auto mask_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", masks[obj_type.name]).toImageMsg();
@@ -573,20 +505,6 @@ private:
         }
     }
     
-    // Add a method to dump obstacle stats to the console for debugging
-    void debug_dump_stats() {
-        #ifdef DEBUG_OUTPUT
-        RCLCPP_INFO(this->get_logger(), "====== DETECTION STATS ======");
-        RCLCPP_INFO(this->get_logger(), "Object types tracked: %zu", object_types.size());
-        
-        for (const auto& obj_type : object_types) {
-            RCLCPP_INFO(this->get_logger(), "%s objects:", obj_type.name.c_str());
-            RCLCPP_INFO(this->get_logger(), "  Height range: %.2f - %.2f", obj_type.min_height, obj_type.max_height);
-        }
-        RCLCPP_INFO(this->get_logger(), "============================");
-        #endif
-    }
-
     void publishCentroids(const std::vector<Centroid3D>& centroids, 
                          rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr publisher) {
         for (const auto& centroid : centroids) {
@@ -603,21 +521,13 @@ private:
     void timer_callback() {
         bool recv = rgb_recv && depth_recv && camera_info_recv && odom_recv;
         if(recv) {
-            RCLCPP_DEBUG(this->get_logger(), "------------- Processing frame -------------");
-            
             // Make sure we have a thread-safe copy of bot_pose
             BotPosition current_bot_pose;
             {
                 std::lock_guard<std::mutex> lock(odom_mutex_);
                 current_bot_pose = bot_pose;
-                
-                // Debug log bot position
-                RCLCPP_INFO(this->get_logger(), "Bot Position: (%.2f, %.2f, %.2f) yaw: %.2f",
-                    current_bot_pose.x, current_bot_pose.y, current_bot_pose.z, current_bot_pose.yaw);
             }
             publish_mask(rgb_image_msg, depth_image_msg, camera_info_msg, current_bot_pose);
-            
-            RCLCPP_DEBUG(this->get_logger(), "------------- Frame processed -------------");
         } else {
             if (!rgb_recv) RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for RGB image");
             if (!depth_recv) RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for depth image");
