@@ -122,7 +122,15 @@ public:
     cos_pitch(cos(pitch)),
     sin_pitch(sin(pitch))
     {
+        this->declare_parameter<std::string>("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
+        this->declare_parameter<std::string>("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
+        this->declare_parameter<std::string>("camera_info_sub_topic", "/zed/zed_node/rgb/camera_info");
     
+        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
+        std::string color_sub_topic = this->get_parameter("color_sub_topic").as_string();
+        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
+
+
         RCLCPP_INFO(this->get_logger(), "height_mask_publisher_node started");
         this->declare_parameter("sim", rclcpp::PARAMETER_BOOL);
         sim = this->get_parameter("sim").as_bool();
@@ -134,15 +142,15 @@ public:
         
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/image_raw", 10, 
+            color_sub_topic, 10, 
             std::bind(&HeightMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
     
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/depth/image_raw", 10, 
+            depth_sub_topic , 10, 
             std::bind(&HeightMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
 
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/zed_node/stereocamera/camera_info", 10, 
+            camera_info_sub_topic, 10, 
             std::bind(&HeightMaskPublisherNode::cameraInfoCallback, this, std::placeholders::_1));
     
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
@@ -450,7 +458,7 @@ private:
             
             
             for (const auto& obj_type : object_types) {
-                std::vector<Centroid3D> confident_centroids;
+                std::vector<Point> confident_centroids;
                 
                 
                 for (auto& centroid : type_centroids[obj_type.name]) {
@@ -468,12 +476,7 @@ private:
                             if (detection.type == obj_type.name && distance(detection.global_position, global_point) < 0.8) {
                                 double time_diff = (current_time - detection.last_update).seconds();
                                 
-                                if (time_diff < 0.5) {
-                                    detection.log_odds += 0.2;
-                                } else {
-                                    detection.log_odds += 0.1;
-                                }
-                                
+                                detection.log_odds += 0.1;
                                 
                                 if (detection.log_odds > 5.0) {
                                     detection.log_odds = 5.0;
@@ -500,28 +503,18 @@ private:
                 }
                 
                 for (const auto& detection : object_detections) {
-                    if (detection.type == obj_type.name && logodds_to_prob(detection.log_odds) > 0.9) {
+                    if (detection.type == obj_type.name && detection.log_odds > 4.0) {
                         Point cloud_point;
                         Point base_point;
                         for (auto& centroid : type_centroids[obj_type.name]) {
-                            if (centroid.point_count > 100) {
-                                confident_centroids.push_back(centroid);
-                            }
+                            publishCentroids(detection.global_position, centroid_publishers[obj_type.name]);
                         }
                     }
                 }
-                
-                if (!confident_centroids.empty()) {
-                    RCLCPP_INFO(this->get_logger(), "Publishing %zu confident %s centroid(s)", 
-                              confident_centroids.size(), obj_type.name.c_str());
-                    publishCentroids(confident_centroids, centroid_publishers[obj_type.name]);
-                }
                 for (const auto& detection : object_detections) {
-                    if (detection.type == obj_type.name && logodds_to_prob(detection.log_odds) > 0.9) {
                         RCLCPP_INFO(this->get_logger(), "%s detection at (%.2f, %.2f, %.2f) has log odds: %.2f (probability: %.2f)", 
-                                    obj_type.name.c_str(), detection.global_position.x, detection.global_position.y, 
+                                    detection.type.c_str(), detection.global_position.x, detection.global_position.y, 
                                     detection.global_position.z, detection.log_odds, logodds_to_prob(detection.log_odds));
-                    }
                 }
                 
                 
@@ -538,24 +531,16 @@ private:
         }
     }
     
-    void publishCentroids(const std::vector<Centroid3D>& centroids, 
+    void publishCentroids(Point centroid, 
                          rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr publisher) {
-        for (const auto& centroid : centroids) {
-            if (centroid.point_count > 0) {
                 geometry_msgs::msg::Point point_msg;
                 Point centroid_point = {centroid.x, centroid.y, centroid.z};
-                if (this->sim){
-                    centroid_point = baseLinkToCloudPoint(centroid_point); 
-                }
-                Point centroid_global = cloudPointToGlobalPoint(centroid_point, bot_pose);
-                point_msg.x = centroid_global.x;
-                point_msg.y = centroid_global.y;
-                point_msg.z = centroid_global.z;
+                point_msg.x = centroid_point.x;
+                point_msg.y = centroid_point.y;
+                point_msg.z = centroid_point.z;
                 publisher->publish(point_msg);
-                RCLCPP_DEBUG(this->get_logger(), "Published centroid at (%.2f, %.2f, %.2f) with %d points",
-                           centroid.x, centroid.y, centroid.z, centroid.point_count);
-            }
-        }
+                RCLCPP_DEBUG(this->get_logger(), "Published centroid at (%.2f, %.2f, %.2f)",
+                           centroid.x, centroid.y, centroid.z);
     }
 
     void timer_callback() {
