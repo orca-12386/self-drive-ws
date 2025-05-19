@@ -27,7 +27,7 @@ private:
     {
         // Create and send TransformStamped
         geometry_msgs::msg::TransformStamped t;
-        t.header.stamp = msg->header.stamp;;
+        t.header.stamp = now();
         t.header.frame_id = "map";
         t.child_frame_id = "base_link";
 
