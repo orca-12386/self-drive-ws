@@ -5,6 +5,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, Twist
 from interfaces.action import GoalAction as StopAction
 import time
+import asyncio
 
 
 class StopServer(Node):
@@ -60,6 +61,8 @@ class StopServer(Node):
             self.get_logger().info(f"Current Velocity: {feedback_msg.feedback}")
             rate.sleep()
 
+        time.sleep(3)
+        
         self.get_logger().info("Stop Action Completed")
         goal_handle.succeed()
         result = StopAction.Result()

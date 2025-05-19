@@ -89,7 +89,11 @@ double get_distance_bfs(const std::array<int, 2> src, const nav_msgs::msg::Occup
 }
 
 double calculate_slope(std::array<int, 2> p1, std::array<int, 2> p2) {
-    return (p2[1]-p1[1])/(p2[0]-p1[0]);
+    if (p2[0]-p1[0] == 0) {
+        return false;
+    } else {
+        return (p2[1]-p1[1])/(p2[0]-p1[0]);
+    }
 }
 
 bool check_in_between(std::array<int, 2> p0, std::array<int, 2> p1, std::array<int, 2> p2, double slope) {
@@ -254,9 +258,12 @@ private:
         double yaw;
         bool odometry_recv = get_odometry_location_func(odometry_location);
         bool yaw_recv = get_odometry_yaw_func(yaw);
-        if(!odometry_recv) {
+        nav_msgs::msg::OccupancyGrid::SharedPtr near_map = get_near_map_func();
+        nav_msgs::msg::OccupancyGrid::SharedPtr yellow_map = get_yellow_map_func();
+        if(!odometry_recv || !near_map || !yellow_map) {
             return;
         }
+
         std::array<double, 3> location = {msg->x, msg->y, msg->z};
         // Transform wrt odometry
         // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("location: ")+std::to_string(location[f])+std::string(",")+std::to_string(location[1])+std::string(",")+std::to_string(location[2])).c_str());
@@ -288,27 +295,21 @@ private:
             RCLCPP_INFO(node->get_logger(), "not in range");
         }
 
+        bool area_status = det->check_area(near_map, yellow_map, odometry_location);
+        bool current_or_edge = det->current || det->edge;
+
         bool conditions = true;
         conditions = conditions && is_not_previous_detection;
-        conditions = conditions && is_in_detection_range;
-        if (!conditions) {
-            return;
-        }
-        nav_msgs::msg::OccupancyGrid::SharedPtr near_map = get_near_map_func();
-        nav_msgs::msg::OccupancyGrid::SharedPtr yellow_map = get_yellow_map_func();
-        if(!near_map || !yellow_map) {
-            return;
-        }
-        bool area_status = det->check_area(near_map, yellow_map, odometry_location);
+        conditions = conditions && area_status;
+        conditions = conditions && current_or_edge;
+
         if(!area_status) {
             RCLCPP_INFO(node->get_logger(), "area_status false");
-            return;
         }
-        conditions = conditions && (det->current || det->edge);
-        if(!conditions) {
+        if(!current_or_edge) {
             RCLCPP_INFO(node->get_logger(), "edge and current conditions not satisfied");
         }
-        // RCLCPP_INFO(node->get_logger(), std::string(std::string("Distance: ")+std::to_string(det->distance)).c_str());
+
         if(conditions) {
             add_detection(det);
             RCLCPP_INFO(node->get_logger(), (std::string("Added new detection: ") + topic).c_str());
@@ -316,6 +317,9 @@ private:
             //     RCLCPP_INFO(node->get_logger(), prev_detection->to_string().c_str());
             // }
             RCLCPP_INFO(node->get_logger(), det->to_string().c_str());
+        } else {
+            delete det;
+            return;
         }
     }
     
@@ -419,12 +423,6 @@ private:
             RCLCPP_INFO(node->get_logger(), "Goal accepted by server, waiting for result");
         }
     }
-
-    // void feedback_callback(typename action_goal_handle::SharedPtr,
-    //     const std::shared_ptr<const typename interface_type::Feedback> feedback)
-    // {
-
-    // }
 
     void result_callback(const typename action_goal_handle::WrappedResult & result) {
         result_recv = true;
