@@ -122,15 +122,7 @@ public:
     cos_pitch(cos(pitch)),
     sin_pitch(sin(pitch))
     {
-        this->declare_parameter<std::string>("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
-        this->declare_parameter<std::string>("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
-        this->declare_parameter<std::string>("camera_info_sub_topic", "/zed/zed_node/rgb/camera_info");
     
-        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
-        std::string color_sub_topic = this->get_parameter("color_sub_topic").as_string();
-        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
-
-
         RCLCPP_INFO(this->get_logger(), "height_mask_publisher_node started");
         this->declare_parameter("sim", rclcpp::PARAMETER_BOOL);
         sim = this->get_parameter("sim").as_bool();
@@ -142,15 +134,15 @@ public:
         
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            color_sub_topic, 10, 
+            "/zed_node/stereocamera/image_raw", 10, 
             std::bind(&HeightMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
     
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            depth_sub_topic , 10, 
+            "/zed_node/stereocamera/depth/image_raw", 10, 
             std::bind(&HeightMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
 
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            camera_info_sub_topic, 10, 
+            "/zed_node/stereocamera/camera_info", 10, 
             std::bind(&HeightMaskPublisherNode::cameraInfoCallback, this, std::placeholders::_1));
     
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
