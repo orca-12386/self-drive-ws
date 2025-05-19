@@ -38,9 +38,9 @@ def generate_launch_description():
         color_sub_topic = "/zed_node/stereocamera/image_raw"
         camera_info_sub_topic = "/zed_node/stereocamera/camera_info"
     else:
-        depth_sub_topic = "/zed/zed_node/depth/depth_registered"
-        color_sub_topic = "/zed/zed_node/rgb/image_rect_color"
-        camera_info_sub_topic = "/zed/zed_node/rgb/camera_info"
+        depth_sub_topic = "/zed_node/depth/depth_registered"
+        color_sub_topic = "/zed_node/rgb/image_rect_color"
+        camera_info_sub_topic = "/zed_node/rgb/camera_info"
 
     if SIM:
         launch_world_robot = [
@@ -143,23 +143,12 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(transforms_dir,'launch','transforms.launch.py'))
         )
 
-        zed_no_tf_launch = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
-            launch_arguments={
-                "camera_model": "zed2i"
-            }.items()
-        )
-        
-        pointcloud_tf = [
-            Node(
-                package='transforms',
-                executable='odom_pc',
-                name='pointcloud_transformer',
-                parameters=[{
-                    'pointcloud_topic': '/zed/zed_node/point_cloud/cloud_registered',
-                    'target_frame': 'robot/odom'
-                }])
-        ]
+        # zed_no_tf_launch = IncludeLaunchDescription(
+        #     PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
+        #     launch_arguments={
+        #         "camera_model": "zed2i"
+        #     }.items()
+        # )
 
 
         lidar_tf = [
@@ -192,7 +181,7 @@ def generate_launch_description():
             declare_imu_topic,
             driver_launch,
             dlo_launch,
-            zed_no_tf_launch,
+            # zed_no_tf_launch,
         ]
 
 
@@ -312,49 +301,43 @@ def generate_launch_description():
 
 
     launch_goal_calculators = [
-        # Lane Follow
-        Node(
-            package='goal_calculator_cpp',
-            executable='lane_follower_node',
-            name='lane_follower_node'),
+        # # Lane Follow
         # Node(
         #     package='goal_calculator_cpp',
-        #     executable='lane_follow',
-        #     name='lane_follow',
-        #     parameters=[{
-        #         'config_file_path': os.path.join(get_package_share_directory('goal_calculator'), 'config','config.yaml')
-        #     }]),
+        #     executable='lane_follower_node',
+        #     name='lane_follower_node'
+        # ),
         # Lane Change
-        Node(
-            package='goal_calculator',
-            executable='lane_change_yellow',
-            name='lane_change_yellow',
-            output='screen',
-            parameters=[{
-                'config_file_path': os.path.join(
-                    get_package_share_directory('goal_calculator'), 
-                    'config', 
-                    'config.yaml'
-                )
-            }]
-        ),
-        # Stop
-        Node(
-            package='goal_calculator',
-            executable='stop_server',
-            name='stop_server',
-        ),
-        # Turn
-        Node(
-            package='goal_calculator',
-            executable='right_turn',
-            name='right_turn'
-        ),
-        Node(
-            package='goal_calculator',
-            executable='left_turn',
-            name='left_turn'
-        )
+        # Node(
+        #     package='goal_calculator',
+        #     executable='lane_change_yellow',
+        #     name='lane_change_yellow',
+        #     output='screen',
+        #     parameters=[{
+        #         'config_file_path': os.path.join(
+        #             get_package_share_directory('goal_calculator'), 
+        #             'config', 
+        #             'config.yaml'
+        #         )
+        #     }]
+        # ),
+        # # Stop
+        # Node(
+        #     package='goal_calculator',
+        #     executable='stop_server',
+        #     name='stop_server',
+        # ),
+        # # Turn
+        # Node(
+        #     package='goal_calculator',
+        #     executable='right_turn',
+        #     name='right_turn'
+        # ),
+        # Node(
+        #     package='goal_calculator',
+        #     executable='left_turn',
+        #     name='left_turn'
+        # )
     ]
 
 
@@ -411,7 +394,7 @@ def generate_launch_description():
             executable='robot_pose_publisher_node',
             name='robot_pose_publisher',
             parameters=[{
-                'map_sub_topic': '/map'
+                'map_sub_topic': '/map/yellow'
             }]       
         ),
     ]
@@ -456,6 +439,16 @@ def generate_launch_description():
             }]
         )
     ]
+
+    launch_odom_tf = [
+        Node(
+            package="transforms",
+            executable="odom_tf",
+            name = 'odom_trasformer'
+        )
+    ]
+
+
     launch_description = list()
 
     if SIM:
@@ -463,10 +456,10 @@ def generate_launch_description():
         launch_description.extend(pointcloud_sim_tf)
         launch_description.extend(launch_transforms)
     else:
-        launch_description.extend(pointcloud_tf)
         launch_description.extend(zed_tf)
         launch_description.extend(lidar_tf)
         launch_description.extend(launch_sensors)
+        launch_description.extend(launch_odom_tf)
 
     if MOVEMENT:
         launch_description.extend(launch_motion_control)
@@ -477,11 +470,12 @@ def generate_launch_description():
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
     
-    launch_description.extend(launch_goal_calculators)
+    # launch_description.extend(launch_goal_calculators)
     
-    launch_description.extend(launch_behaviour_manager)
+    # launch_description.extend(launch_behaviour_manager)
   
     launch_description.extend(launch_intersection_detector)
+
     # launch_description.extend(launch_detector)
     launch_description.extend(launch_height_mapper)
 

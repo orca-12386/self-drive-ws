@@ -61,99 +61,142 @@ private:
         RCLCPP_INFO(this->get_logger(), str.c_str());
     }
 
-    bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& dst) {
-        std::vector<std::array<int, 2>> visited_vec;
-        std::unordered_set<uint64_t> visited;
-        auto hash_coords = [](const std::array<int, 2>& coords) {
-            return (static_cast<uint64_t>(coords[0]) << 32) | static_cast<uint64_t>(coords[1]);
-        };
+#include <array>
+#include <queue>
+#include <vector>
+#include <unordered_set>
+#include <cmath>
+
+// Improved hash function for 2D coordinates
+struct CoordHash {
+    std::size_t operator()(const std::array<int, 2>& coords) const {
+        return static_cast<std::size_t>(coords[0]) * 73856093 + 
+               static_cast<std::size_t>(coords[1]) * 19349669;
+    }
+};
+
+    // Get nearest non-zero point using BFS
+    bool get_nearest_point_bfs(
+        const std::array<int, 2>& src, 
+        const nav_msgs::msg::OccupancyGrid::SharedPtr& map,
+        std::array<int, 2>& dst
+    ) {
+        int MAX_SEARCH_DISTANCE = static_cast<int>(std::round(3.0 / map->info.resolution));
+        
+        // Directions: right, up, left, down
+        static const std::array<std::array<int, 2>, 4> directions = {{
+            {1, 0}, {0, 1}, {-1, 0}, {0, -1}
+        }};
+        
+        std::unordered_set<std::array<int, 2>, CoordHash> visited;
         std::queue<std::array<int, 2>> q;
-        std::array<int, 2> p;
-        std::array<std::array<int, 2>, 4> neighbours;
+        
         q.push(src);
-        while(q.size()>0) {
-            p = q.front();
+        visited.insert(src);
+        
+        while (!q.empty()) {
+            auto p = q.front();
             q.pop();
-            if(map->data[p[1]*map->info.width + p[0]] > 0) {
+            
+            // Check if this point is occupied (value > 0)
+            const size_t index = p[1] * map->info.width + p[0];
+            if (map->data[index] > 0) {
                 dst = p;
                 return true;
             }
-            if(sqrt(pow(p[0]-src[0],2) + pow(p[1]-src[1],2)) > 60) {
-                return false;
+            
+            // Check if we've exceeded maximum search distance
+            const double distance = std::hypot(p[0] - src[0], p[1] - src[1]);
+            if (distance > MAX_SEARCH_DISTANCE) {
+                continue;
             }
-            neighbours[0] = {p[0]+1, p[1]};
-            neighbours[1] = {p[0], p[1]+1};
-            neighbours[2] = {p[0]-1, p[1]};
-            neighbours[3] = {p[0], p[1]-1};
-            visited_vec.push_back(p);
-            for(int i=0;i<4;i++) {
-                if(neighbours[i][0] >= map->info.width || neighbours[i][0] < 0) {
+            
+            // Check all four neighboring directions
+            for (const auto& dir : directions) {
+                std::array<int, 2> next = {p[0] + dir[0], p[1] + dir[1]};
+                
+                // Check map boundaries
+                if (next[0] < 0 || next[0] >= map->info.width || 
+                    next[1] < 0 || next[1] >= map->info.height) {
                     continue;
                 }
-                if(neighbours[i][1] >= map->info.height || neighbours[i][1] < 0) {
+                
+                // Check if already visited
+                if (visited.find(next) != visited.end()) {
                     continue;
                 }
-                if(visited.find(hash_coords(neighbours[i])) == visited.end()) {
-                    q.push(neighbours[i]);
-                    visited.insert(hash_coords(neighbours[i]));
-                }
+                
+                q.push(next);
+                visited.insert(next);
             }
         }
-        return false;
+        
+        return false;  // No valid point found
     }
 
-    void get_connected_points_bfs(std::array<int,2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::vector<std::array<int,2>>& connected) {
-        std::unordered_set<uint64_t> visited;
-        visited.reserve(map->info.width * map->info.height / 10);        
-        std::deque<std::array<int, 2>> q;        
-        auto hash_coords = [](int x, int y) {
-            return (static_cast<uint64_t>(x) << 32) | static_cast<uint64_t>(y);
-        };        
+   void get_connected_points_bfs(
+    const std::array<int, 2>& src,
+    const nav_msgs::msg::OccupancyGrid::SharedPtr& map,
+    std::vector<std::array<int, 2>>& connected,
+    double max_skip_distance = 1.0  // Default skip distance in map units
+    ) {
+        connected.clear();
+        
         const int width = map->info.width;
         const int height = map->info.height;
-        uint64_t src_hash = hash_coords(src[0], src[1]);
-        visited.insert(src_hash);
-        q.push_back(src);
-        int skip_dist = 7;
-        const int cdx[8] = {1, 0, -1, 0, 1, -1, 1, -1};
-        const int cdy[8] = {0, 1, 0, -1, 1, -1, -1, 1};
-        int* dx = new int[skip_dist*8];
-        int* dy = new int[skip_dist*8];
-        int c;
-        for(int i = 0; i < skip_dist*8 ; i++) {
-            c = (i/8) + 1;
-            dx[i] = c*cdx[i%8];
-            dy[i] = c*cdy[i%8];
+        
+        // Convert skip distance from map units to grid cells
+        const double skip_distance_cells = max_skip_distance / map->info.resolution;
+        const double skip_distance_squared = skip_distance_cells * skip_distance_cells;
+        
+        // Find all non-zero points first
+        std::vector<std::array<int, 2>> occupied_points;
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (map->data[y * width + x] > 0) {
+                    occupied_points.push_back({x, y});
+                }
+            }
         }
-        connected.clear();
-        connected.reserve(visited.size() * 2);  
-        while(!q.empty()) {
-            auto p = q.front();
-            q.pop_front();
-            connected.push_back(p);
+        
+        // BFS to find connected cluster
+        std::unordered_set<std::array<int, 2>, CoordHash> visited;
+        std::queue<std::array<int, 2>> q;
+        
+        // Start with source point
+        q.push(src);
+        visited.insert(src);
+        
+        while (!q.empty()) {
+            auto current = q.front();
+            q.pop();
             
-            for(int i = 0; i < 8; i++) {
-                int nx = p[0] + dx[i];
-                int ny = p[1] + dy[i];
-                
-                if(nx < 0 || nx >= width || ny < 0 || ny >= height)
+            connected.push_back(current);
+            
+            // Find all nearby occupied points within skip distance
+            for (const auto& point : occupied_points) {
+                // Skip if already visited
+                if (visited.find(point) != visited.end()) {
                     continue;
+                }
                 
-                if(map->data[ny * width + nx] <= 0)
-                    continue;
+                // Calculate squared distance
+                const double dx = point[0] - current[0];
+                const double dy = point[1] - current[1];
+                const double dist_squared = dx*dx + dy*dy;
                 
-                uint64_t hash = hash_coords(nx, ny);
-                if(visited.find(hash) != visited.end())
-                    continue;
-                
-                visited.insert(hash);
-                q.push_back({nx, ny});
-            }            
-            // if(connected.size() > 10000)
-            //     break;
+                // Check if within skip distance
+                if (dist_squared <= skip_distance_squared) {
+                    visited.insert(point);
+                    q.push(point);
+                }
+            }
+            
+            // Safety check to prevent excessive memory usage
+            if (connected.size() > 10000) {
+                break;
+            }
         }
-        delete dx;
-        delete dy;
     }
 
     void filter_and_publish_map(const nav_msgs::msg::Odometry::SharedPtr odom, const nav_msgs::msg::OccupancyGrid::SharedPtr map) {
@@ -176,6 +219,7 @@ private:
         // log("finding nearest");
         bool b = get_nearest_point_bfs(source, map, nearest_pt);
         if(!b) {
+            map_pub->publish(*map);
             return;
         }
         // log("finding connected");

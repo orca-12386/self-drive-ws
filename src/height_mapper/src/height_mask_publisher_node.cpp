@@ -262,7 +262,11 @@ private:
                         cloud_point.z * cos(bot_pose.yaw));
         global_point.y = (bot_pose.y + cloud_point.z * sin(bot_pose.yaw) -
                         cloud_point.x * cos(bot_pose.yaw));
-        global_point.z = -1 * cloud_point.y + 1.5;
+        if(this->sim) {
+            global_point.z = -1 * cloud_point.y + 1.5;    
+        } else {
+            global_point.z = cloud_point.y;
+        }
         return global_point;
     }
 
@@ -270,7 +274,11 @@ private:
         Point base_link_point;
         base_link_point.x = cloud_point.z * cos_pitch - cloud_point.y * sin_pitch;
         base_link_point.y = -cloud_point.x;
-        base_link_point.z = 1.5f - cloud_point.z * sin_pitch - cloud_point.y * cos_pitch;
+        if(this->sim) {
+            base_link_point.z = 1.5f - cloud_point.z * sin_pitch - cloud_point.y * cos_pitch;        
+        } else {
+            base_link_point.z = cloud_point.z * sin_pitch + cloud_point.y * cos_pitch;        
+        }
         return base_link_point;
     }
 
@@ -323,9 +331,7 @@ private:
                 }
                 
                 Point base_point = convert_depth_to_point(j, i, depthvalue, camera_info);
-                if (this->sim){
                 base_point = cloudPointToBaselink(base_point);
-                }
                 if (base_point.x > 1.5 && base_point.x < 15 && base_point.z > 0.1 && base_point.z < 2.0) {
                     valid_points.at<uchar>(i, j) = 255;
                 }

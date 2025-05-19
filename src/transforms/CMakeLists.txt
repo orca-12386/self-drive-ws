@@ -23,7 +23,7 @@ add_executable(zed_tf src/zed_tf.cpp)
 add_executable(odom_pc src/odom_pc.cpp)
 add_executable(lidar_tf src/lidar_tf2.cpp)
 add_executable(sim_odom_pc src/sim_odom_pc.cpp)
-
+add_executable(odom_tf src/odom_tf.cpp)
 
 # Common dependencies for all targets
 foreach(target
@@ -31,6 +31,7 @@ foreach(target
     zed_tf
     odom_pc
     sim_odom_pc
+    odom_tf
 )
     ament_target_dependencies(${target}
         rclcpp
@@ -51,6 +52,7 @@ install(TARGETS
     zed_tf
     odom_pc
     sim_odom_pc
+    odom_tf
     DESTINATION lib/${PROJECT_NAME}
 )
 install(DIRECTORY

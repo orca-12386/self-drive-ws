@@ -1,0 +1,7 @@
+NavfnROS:
+  allow_unknown: true # Allow planning through unknown space
+  default_tolerance: 0.0 # Default goal tolerance
+  use_astar: true # Use A* instead of Dijkstra's algorithm
+  planner_patience: 5.0 # Time to wait in seconds for the planner to find a valid plan
+  max_planning_retries: -1 # Number of retries for planning (-1 for infinite retries)
+  visualize_potential: false # Do not publish the potential costmap

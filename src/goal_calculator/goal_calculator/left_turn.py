@@ -11,7 +11,6 @@ import math
 from collections import deque
 from scipy.spatial.distance import cdist
 from interfaces.action import GoalAction as LeftTurn
-import asyncio
 from scipy.spatial.transform import Rotation
 
 
@@ -26,13 +25,12 @@ class LeftTurnNode(Node):
     def __init__(self):
         super().__init__('left_turn_node')
         self.map_subscription = self.create_subscription(OccupancyGrid, '/map/yellow/local', self.map_callback, 10)
-        self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.odom_subscription = self.create_subscription(Odometry, '/odom/transformed', self.odom_callback, 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.action_server = ActionServer(self, LeftTurn, 'LeftTurn', execute_callback=self.execute_callback)
         # self.create_timer(0.1, self.publish_goal)
         
         self.Midpoint = None
-        self.closest_yellow_lane = None
         self.final_goal = None
         self.mid_x_world = None
         self.mid_y_world = None
@@ -83,8 +81,8 @@ class LeftTurnNode(Node):
             bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
             
             yaw = self.get_yaw_from_quaternion(self.bot_orientation)
-            closest_lane_point_x = 0
-            closest_lane_point_y = 0
+            closest_lane_x = 0
+            closest_lane_y = 0
 
             queue = deque([(bot_x, bot_y)])
             visited = {(bot_x, bot_y)}
@@ -95,8 +93,8 @@ class LeftTurnNode(Node):
                 x, y = queue.popleft()
                 if self.map_data[y, x] > 0:
                     self.get_logger().info(f"Found Closest Yellow Lane Point: ({x}, {y})")
-                    closest_lane_point_x = x
-                    closest_lane_point_y = y
+                    closest_lane_x = x
+                    closest_lane_y = y
                     break
                 
                 for dx, dy in directions:
@@ -105,24 +103,34 @@ class LeftTurnNode(Node):
                         queue.append((nx, ny))
                         visited.add((nx, ny))
             
-            direction_x = bot_x - closest_lane_point_x
-            direction_y = bot_y - closest_lane_point_y
+            direction_x = bot_x - closest_lane_x
+            direction_y = bot_y - closest_lane_y
 
-            direction = math.atan2(direction_y, direction_x)
-            return direction, closest_lane_point_x, closest_lane_point_y
+            angle = math.atan2(direction_y, direction_x)
+            direction = round(angle/90) * 90
+
+            bot_pose_x, bot_pose_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
+            self.lane_offset = math.sqrt((bot_pose_x - closest_lane_x)**2 + (bot_pose_y- closest_lane_y)**2)
+            self.lane_offset = self.lane_offset * math.cos(angle)
+            self.get_logger().info(f"Lane Offset: {self.lane_offset}")
+
+            return direction, closest_lane_x, closest_lane_y
 
     def find_intersection_midpoint(self):
         if self.Midpoint is not None:
             return
         self.get_logger().info("Calculating Intermediate Goal")
         yellow_lane_points = np.argwhere(self.map_data > 0)
-        yellow_clusters = DBSCAN(eps=1, min_samples=4, algorithm='auto', metric='euclidean').fit(yellow_lane_points)
+        yellow_clusters = DBSCAN(eps=3, min_samples=3, algorithm='auto', metric='euclidean').fit(yellow_lane_points)
         labels = yellow_clusters.labels_
 
         unique_clusters = np.unique(labels)
         unique_clusters = unique_clusters[unique_clusters != -1]
+        print(unique_clusters.size)
 
         direction, closest_lane_x, closest_lane_y = self.find_intersection_direction()
+        self.get_logger().info(f"Direction:{direction}")
+        self.get_logger().info(f"{closest_lane_x},{closest_lane_y}")
         closest_point = np.array([closest_lane_y, closest_lane_x])
 
         cluster_distances = []
@@ -132,6 +140,7 @@ class LeftTurnNode(Node):
             cluster_distances.append((cluster_label, min_distance))
 
         cluster_distances.sort(key=lambda x: x[1])
+        print(cluster_distances)
 
         lane1_cluster_label = cluster_distances[0][0]
         lane2_cluster_label = None
@@ -139,29 +148,19 @@ class LeftTurnNode(Node):
         bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
         for cluster in cluster_distances:
             if cluster == cluster_distances[0]:
+                cluster_points = yellow_lane_points[labels==cluster[0]]
+                print(cluster_points.size)
                 continue
             cluster_label = cluster[0]
             cluster_points = yellow_lane_points[labels == cluster_label]
-            cluster_center = np.mean(cluster_points, axis=0)
-
-            cluster_center_x = cluster_center[1]
-            cluster_center_y = cluster_center[0]
-
-            invalid_cluster = False
-
-            if math.pi / 4 <= bot_yaw <= 3 * math.pi / 4:  
-                invalid_cluster = cluster_center_y < closest_lane_y
-            elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:  
-                invalid_cluster = cluster_center_y > closest_lane_y
-            elif (-math.pi <= bot_yaw -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):  
-                invalid_cluster = cluster_center_x > closest_lane_x
-            elif -math.pi / 4 < bot_yaw < math.pi / 4:  
-                invalid_cluster = cluster_center_x < closest_lane_x
-
-            if invalid_cluster:
+            if cluster_points.size<20:
                 continue
+            
             lane2_cluster_label = cluster_label
             break
+        
+        if lane2_cluster_label is None:
+            self.get_logger().error("Second cluster could not be found")
 
         lane1_cluster = yellow_lane_points[labels == lane1_cluster_label]
         lane2_cluster = yellow_lane_points[labels == lane2_cluster_label]
@@ -169,8 +168,8 @@ class LeftTurnNode(Node):
         lane1_point = lane1_cluster[0]
         lane2_point = lane2_cluster[0]
 
-        x1, y1 = lane1_point[0], lane1_point[1]
-        x2, y2 = lane2_point[0], lane2_point[1]
+        x1, y1 = lane1_point[1], lane1_point[0]
+        x2, y2 = lane2_point[1], lane2_point[0]
 
         m1 = math.tan(direction)  
         m2 = math.tan(direction + math.pi / 2)  
@@ -183,17 +182,10 @@ class LeftTurnNode(Node):
         mid_x = (C1 * B2 - C2 * B1) / det
         mid_y = (A1 * C2 - A2 * C1) / det   
 
-        bot_pose_x, bot_pose_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
+        mid_x_world, mid_y_world = self.map_to_world(mid_x, mid_y)
 
-        closest_lane_x_world, closest_lane_y_world = self.map_to_world(closest_lane_x, closest_lane_y)
-
-        self.lane_offset = math.sqrt((bot_pose_x - closest_lane_x)**2 + (bot_pose_y- closest_lane_y)**2)
-        self.get_logger().info(f"Lane Offset: {self.lane_offset}")
-
-        mid_x_world, mid_y_world = self.map_to_world(mid_y, mid_x)
-
-        goal_yaw = math.atan2(mid_y_world - closest_lane_y_world, mid_x_world - closest_lane_x_world) + math.pi / 4
-        perpendicular_direction = math.atan2(mid_y_world - closest_lane_y_world, mid_x_world - closest_lane_x_world) 
+        goal_yaw = direction + math.pi / 3
+        self.perpendicular_direction = direction 
         
         self.Midpoint = PoseStamped()
         self.Midpoint.header.frame_id = 'map'
@@ -212,7 +204,6 @@ class LeftTurnNode(Node):
 
         self.mid_x_world = mid_x_world
         self.mid_y_world = mid_y_world 
-        self.perpendicular_direction = perpendicular_direction
         return
 
     def calculate_goal(self):
@@ -240,19 +231,19 @@ class LeftTurnNode(Node):
 
             while queue:
                 x, y = queue.popleft()
-                bot_position_x, bot_position_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
+                bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
 
                 if self.map_data[y, x] > 0:
                     is_right = False
 
                     if math.pi / 4 <= self.perpendicular_direction <= 3 * math.pi / 4:  
-                        is_right = x < bot_position_x - 10
+                        is_right = (x < bot_x - 10) and (bot_y - 1 < y < bot_y + 1 ) 
                     elif -3 * math.pi / 4 <= self.perpendicular_direction <= -math.pi / 4:  
-                        is_right = x > bot_position_x + 10
+                        is_right = x > bot_x + 10 and (bot_y - 1 < y < bot_y + 1 )
                     elif (-math.pi <= self.perpendicular_direction < -3 * math.pi / 4) or (3 * math.pi / 4 < self.perpendicular_direction <= math.pi):  
-                        is_right = y < bot_position_y - 10
+                        is_right = y < bot_y - 10 and (bot_x - 1 < x < bot_x + 1 )
                     elif -math.pi / 4 < self.perpendicular_direction < math.pi / 4:  
-                        is_right = y > bot_position_y + 10
+                        is_right = y > bot_y + 10 and (bot_x - 1 < x < bot_x + 1 )
 
                     if is_right:
                         next_lane_point_x, next_lane_point_y = x, y
@@ -319,6 +310,8 @@ class LeftTurnNode(Node):
                 self.get_logger().info("Could Not Calculate Goal")
                 goal_handle.abort()
                 return LeftTurn.Result()
+            
+            rate = self.create_rate(5)
 
             if self.Midpoint is not None and self.final_goal is None:
                 self.publish_goal()
@@ -327,7 +320,7 @@ class LeftTurnNode(Node):
                         self.get_logger().info("Midpoint Reached")
                         break
                     self.publish_goal()
-                    asyncio.sleep(0.1)
+                    rate.sleep()
 
             self.calculate_goal()
             self.publish_goal()
@@ -340,7 +333,7 @@ class LeftTurnNode(Node):
                     result.success = True
                     return result
                 self.publish_goal()
-                asyncio.sleep(0.1)
+                rate.sleep()
 
         except Exception as e:
             self.get_logger().error(f"Error: {e}")

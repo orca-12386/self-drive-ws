@@ -31,8 +31,8 @@ public:
             map_sub_topic+"/robot_orientation", 10);
 
         // Initialize TF buffer and listener
-        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+        // tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        // tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
     }
 
 private:
@@ -62,14 +62,14 @@ private:
         pose_stamped.header = odom_msg->header;
         pose_stamped.pose = odom_msg->pose.pose;
 
-        try {
+        // try {
             // Transform from odom to map frame
-            geometry_msgs::msg::TransformStamped transform = 
-                tf_buffer_->lookupTransform("map", "odom", tf2::TimePointZero);
+            // geometry_msgs::msg::TransformStamped transform = 
+            //     tf_buffer_->lookupTransform("map", "odom", tf2::TimePointZero);
             
             geometry_msgs::msg::PoseStamped robot_pose_map;
-            tf2::doTransform(pose_stamped, robot_pose_map, transform);
-
+            // tf2::doTransform(pose_stamped, robot_pose_map, transform);
+            robot_pose_map = pose_stamped;
             // Calculate grid coordinates
             int grid_x = static_cast<int>(
                 (robot_pose_map.pose.position.x - map_.info.origin.position.x) / 
@@ -101,18 +101,18 @@ private:
             orientation_msg.data = yaw;
             orientation_pub_->publish(orientation_msg);
 
-        } catch (tf2::TransformException& ex) {
-            RCLCPP_ERROR(get_logger(), "Transform failed: %s", ex.what());
-            return;
-        }
+        // } catch (tf2::TransformException& ex) {
+        //     RCLCPP_ERROR(get_logger(), "Transform failed: %s", ex.what());
+        //     return;
+        // }
     }
 
     // Member variables
     nav_msgs::msg::OccupancyGrid map_;
     bool has_map_ = false;
     
-    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    // std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    // std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;

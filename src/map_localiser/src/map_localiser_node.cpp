@@ -49,7 +49,7 @@ private:
         // Load parameters
         local_costmap_width_ = config["local_costmap"]["width"].as<double>();
         local_costmap_height_ = config["local_costmap"]["height"].as<double>();
-        resolution_ = config["local_costmap"]["resolution"].as<double>();
+        // resolution_ = config["local_costmap"]["resolution"].as<double>();
         update_frequency_ = config["local_costmap"]["update_frequency"].as<double>();
 
         // Create timer for periodic updates
@@ -79,6 +79,7 @@ private:
         nav_msgs::msg::OccupancyGrid local_map;
         local_map.header.stamp = this->now();
         local_map.header.frame_id = "map";
+        resolution_ = global_map_.info.resolution;
         local_map.info.resolution = resolution_;
         local_map.info.width = static_cast<unsigned int>(local_costmap_width_ / resolution_);
         local_map.info.height = static_cast<unsigned int>(local_costmap_height_ / resolution_);

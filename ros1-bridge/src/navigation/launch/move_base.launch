@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <!-- Move Base Node -->
+  <node name="move_base" output="screen" pkg="move_base" type="move_base">
+    <rosparam command="load" file="$(find navigation)/config/local_costmap_params.yaml" />
+    <rosparam command="load" file="$(find navigation)/config/global_costmap_params.yaml" />
+    <rosparam command="load" file="$(find navigation)/config/base_global_planner.yaml" />
+    <rosparam command="load" file="$(find navigation)/config/teb_local_planner_params.yaml" />
+    <param name="base_global_planner" value="navfn/NavfnROS" />
+    <param name="base_local_planner" value="teb_local_planner/TebLocalPlannerROS" />
+    <remap from="odom" to="/odom/transformed" />
+    <remap from="cmd_vel" to="cmd_vel" />
+  </node>
+
+
+  <!-- <node name="move_base" output="screen" pkg="move_base" type="move_base"> -->
+  <!--   <rosparam command="load" file="$(find navigation)/config/local_costmap_params.yaml" /> -->
+  <!--   <rosparam command="load" file="$(find navigation)/config/global_costmap_params.yaml" /> -->
+  <!--   <rosparam command="load" file="$(find navigation)/config/base_global_planner.yaml" /> -->
+  <!--   <rosparam command="load" file="$(find navigation)/config/dwa_local_planner_params.yaml" /> -->
+  <!--   <param name="base_global_planner" value="navfn/NavfnROS" /> -->
+  <!--   <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" /> -->
+  <!--   <remap from="odom" to="/robot/dlo/odom_node/odom" /> -->
+  <!--   <remap from="cmd_vel" to="/cmd_vel" /> -->
+  <!-- </node> -->
+
+  <!-- <node name="goal_gen_node" output="screen" pkg="navigation" type="goal_gen" /> -->
+
+</launch>

@@ -45,7 +45,7 @@ public:
         setup_kernels();
 
         timer = this->create_wall_timer(
-            std::chrono::milliseconds(40), std::bind(&LaneMaskPublisherNode::timer_callback, this));
+            std::chrono::milliseconds(100), std::bind(&LaneMaskPublisherNode::timer_callback, this));
     };
 
 private:
@@ -73,24 +73,48 @@ private:
 
     void declare_parameters() {
         this->declare_parameter("sim", false);
-        this->declare_parameter("depth_sub_topic", "/depth/image");
-        this->declare_parameter("color_sub_topic", "/color/image");
+        this->declare_parameter("depth_sub_topic", "/zed_node/depth/depth_registered");
+        this->declare_parameter("color_sub_topic", "/zed_node/rgb/image_rect_color");
+        
     }
 
     void load_parameters() {
         sim = this->get_parameter("sim").as_bool();
 
         // Hardcoded mask ranges depending on sim mode
-        yellow_mask_lower = cv::Scalar(0, 100, 100);
-        yellow_mask_upper = cv::Scalar(210, 255, 255);
+
 
         if (sim) {
             white_mask_rgb_lower = cv::Scalar(230, 230, 230);
             white_mask_rgb_upper = cv::Scalar(255, 255, 255);
+            yellow_mask_lower = cv::Scalar(0, 69, 41);
+            yellow_mask_upper = cv::Scalar(179, 255, 255);
             target_v = -1;  // No brightness adjustment
         } else {
+            // Night
             white_mask_hsv_lower = cv::Scalar(0, 0, 180);
             white_mask_hsv_upper = cv::Scalar(180, 80, 255);
+            yellow_mask_lower = cv::Scalar(0, 69, 41);
+            yellow_mask_upper = cv::Scalar(179, 255, 255);
+
+            // Evening
+            // white_mask_hsv_lower = cv::Scalar(0, 0, 215);
+            // white_mask_hsv_upper = cv::Scalar(85, 10, 255);
+            // yellow_mask_lower = cv::Scalar(50, 0, 230); 
+            // yellow_mask_upper = cv::Scalar(180, 255, 255);
+
+            // Late Evening
+            // white_mask_hsv_lower = cv::Scalar(0, 0, 230);
+            // white_mask_hsv_upper = cv::Scalar(180, 40, 255);
+            // yellow_mask_lower = cv::Scalar(62, 94, 106);
+            // yellow_mask_upper = cv::Scalar(113, 255, 255);
+
+            // Day
+            // white_mask_hsv_lower = cv::Scalar(0, 0, 255);
+            // white_mask_hsv_upper = cv::Scalar(77, 30, 255); //34
+            // yellow_mask_lower = cv::Scalar(50, 0, 230); 
+            // yellow_mask_upper = cv::Scalar(180, 255, 255);
+            
             target_v = 140; // Target brightness value
         }
     }
@@ -111,9 +135,10 @@ private:
     }
 
     void setup_kernels() {
-        int kernel_size = 3;
-        erosion_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(kernel_size, kernel_size));
-        dilation_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(kernel_size, kernel_size));
+        int erosion_kernel_size = 5;
+        int dilation_kernel_size = 7;
+        erosion_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(erosion_kernel_size, erosion_kernel_size));
+        dilation_kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(dilation_kernel_size, dilation_kernel_size));
     }
 
     void rgbImageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
@@ -150,6 +175,7 @@ private:
         }
 
         generate_white_mask(rgb_image, white_mask);
+        remove_horizon(white_mask, depth_image);
         publish_mask(white_mask, white_mask_pub);
 
         generate_yellow_mask(rgb_image, yellow_mask);
@@ -169,8 +195,10 @@ private:
     }
 
     void generate_yellow_mask(const cv::Mat& image, cv::Mat& mask) {
-        cv::cvtColor(image, hsv, cv::COLOR_RGB2HSV);
-        cv::inRange(hsv, yellow_mask_lower, yellow_mask_upper, mask);
+            cv::Mat bright_image = adjust_brightness(image, target_v);
+            cv::cvtColor(bright_image, hsv, cv::COLOR_BGR2HSV);
+            cv::inRange(hsv, yellow_mask_lower, yellow_mask_upper, mask);
+            apply_morphology(mask);
     }
 
     void remove_horizon(cv::Mat& mask, const cv::Mat& depth_image) {

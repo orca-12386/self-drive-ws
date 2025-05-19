@@ -1,6 +1,6 @@
 #define HEIGHT 3000
 #define WIDTH 3000
-#define RESOLUTION 0.08
+#define RESOLUTION 0.04
 
 // #define DEBUG
 
@@ -97,15 +97,18 @@ public:
         this->declare_parameter("sim", rclcpp::PARAMETER_BOOL);
         sim = this->get_parameter("sim").as_bool();
 
-        this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
-        this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
-        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
-        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
-
-        this->declare_parameter("map_pub_topic", rclcpp::PARAMETER_STRING);
-        this->declare_parameter("mask_sub_topic", rclcpp::PARAMETER_STRING);
-        std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
+        this->declare_parameter<std::string>("mask_sub_topic", "/mask/white");
+        this->declare_parameter<std::string>("map_pub_topic", "/map/white");
+        this->declare_parameter<std::string>("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
+        this->declare_parameter<std::string>("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
+        this->declare_parameter<std::string>("camera_info_sub_topic", "/zed/zed_node/rgb/camera_info");
+        
         std::string mask_sub_topic = this->get_parameter("mask_sub_topic").as_string();
+        std::string map_pub_topic = this->get_parameter("map_pub_topic").as_string();
+        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
+        std::string color_sub_topic = this->get_parameter("color_sub_topic").as_string();
+        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
+        
 
         // Initialise subscriptions
 
@@ -143,14 +146,16 @@ public:
         z_threshold = 20;
         y_threshold = 0.1;
         
-        prob_mark = 0.7;
+        prob_mark = 0.5;
         log_odds_mark = prob_to_log_odds(prob_mark);
-        prob_hit = 0.7;
+        prob_hit = 0.8;
         log_odds_hit = prob_to_log_odds(prob_hit);
-        prob_miss = 0.3;
+        prob_miss = 0.2;
         log_odds_miss = prob_to_log_odds(prob_miss);
         prob_unknown = 0.5;
         log_odds_unknown = prob_to_log_odds(prob_unknown);
+
+        log_odds_clamp = 100;
 
         for(int i = 0;i<grid_height ;i++) {
             for(int j = 0;j<grid_width;j++) {
@@ -306,6 +311,20 @@ private:
                 points.push_back(p);
             }
         }
+
+        // get antipoints
+        antipoints.clear();
+        cv::Mat complement_mask_image;
+        cv::bitwise_not(mask_image, complement_mask_image);
+        cv::findNonZero(complement_mask_image, locations); // Get all nonzero pixel locations
+        for (const auto& pt : locations) {
+            double d = static_cast<double>(depth_image.at<float>(pt.y, pt.x)); // Access color pixel
+            Point p = convert_depth_to_point(pt, d, camera_info);
+            if(p.y < y_threshold && p.z<z_threshold) {
+                antipoints.push_back(p);
+            }
+        }
+
         log_debug(std::string("Number of points: ")+std::to_string(static_cast<int>(points.size())));
 
         log_debug(t4.log());
@@ -340,10 +359,10 @@ private:
         //log_debug("Created map message");
         // log_debug("x");
 
-        int min_grid_x = grid_width, max_grid_x = 0;
-        int min_grid_y = grid_height, max_grid_y = 0;
+        // int min_grid_x = grid_width, max_grid_x = 0;
+        // int min_grid_y = grid_height, max_grid_y = 0;
 
-        std::unordered_set<size_t> visited_indexes;
+        // std::unordered_set<size_t> visited_indexes;
 
         for (auto it = begin (points); it != end (points); ++it) {
             // log_debug("y");
@@ -357,29 +376,36 @@ private:
             // log_debug(std::to_string(it->global_grid_x) + std::string(",") + std::to_string(it->global_grid_y));
             // log_debug(std::to_string((it->global_grid_y*grid_width)+it->global_grid_x));
             if(it->global_grid_y < grid_height && it->global_grid_y >= 0 && it->global_grid_x >= 0 && it->global_grid_x < grid_width) {
-                if(it->global_grid_x < min_grid_x) {
-                    min_grid_x = it->global_grid_x;
-                }
-                if(it->global_grid_x > max_grid_x) {
-                    max_grid_x = it->global_grid_x;
-                }
-                if(it->global_grid_y < min_grid_y) {
-                    min_grid_y = it->global_grid_y;
-                }
-                if(it->global_grid_y > max_grid_y) {
-                    max_grid_y = it->global_grid_y;
-                }
+                // if(it->global_grid_x < min_grid_x) {
+                //     min_grid_x = it->global_grid_x;
+                // }
+                // if(it->global_grid_x > max_grid_x) {
+                //     max_grid_x = it->global_grid_x;
+                // }
+                // if(it->global_grid_y < min_grid_y) {
+                //     min_grid_y = it->global_grid_y;
+                // }
+                // if(it->global_grid_y > max_grid_y) {
+                //     max_grid_y = it->global_grid_y;
+                // }
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
-                    if(visited_indexes.find(index) == visited_indexes.end()) {
-                        // not in set
-                        visited_indexes.insert(index);
-                        log_odds_map[index] -= log_odds_miss;
-                    }
-                    instant_map_msg->data[index] = 100;
-                    log_odds_map[index] += log_odds_hit;
-                    if(abs(log_odds_map[index]) > 5) {
-                        log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*5;    
-                    }
+                // if(visited_indexes.find(index) == visited_indexes.end()) {
+                //     // not in set
+                //     visited_indexes.insert(index);
+                //     log_odds_map[index] -= log_odds_miss;
+                // }
+                instant_map_msg->data[index] = 100;
+                log_odds_map[index] += log_odds_hit;
+                if(abs(log_odds_map[index]) > log_odds_clamp) {
+                    log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*5;    
+                }
+                if(log_odds_map[index] >= log_odds_mark) {
+                    full_map_msg->data[index] = 100;
+                } else if(log_odds_map[index] > log_odds_miss) {
+                    full_map_msg->data[index] = -1;
+                } else {
+                    full_map_msg->data[index] = 0;
+                }    
             } else {
                 log("Assignment exceeds map dimensions");
             }
@@ -388,66 +414,71 @@ private:
 
         log_debug(t6.log());
 
-        Timer t8 = Timer("ground");
+        // Timer t8 = Timer("ground");
 
-        std::vector<Point> polygon_corners;
+        // std::vector<Point> polygon_corners;
         
-        float value;
-        float goodvalue;
-        // int jlog;
-        for(int i = 0;i<depth_image.rows;i++) {
-            goodvalue = z_threshold;
-            for(int j = 0;j<depth_image.cols;j++) {
-                // jlog = j;
-                value = depth_image.at<float>(i, j);
-                if((!cvIsNaN(value) && !cvIsInf(value))) {
-                    goodvalue = value;
-                    break;
-                }
-            }
-            if(goodvalue < z_threshold) {
-                double d = static_cast<double>(value); // Access color pixel
-                Point p = convert_depth_to_point(cv::Point(0, i), d, camera_info);    
-                polygon_corners.push_back(p);
-                Point p2 = convert_depth_to_point(cv::Point(depth_image.cols-1, i), d, camera_info);
-                polygon_corners.push_back(p2);
-                break;
-            }
-        }
-    
-        Point p3 = convert_depth_to_point(cv::Point(depth_image.cols-1, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, depth_image.cols-1)), camera_info);
-        Point p4 = convert_depth_to_point(cv::Point(0, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, 0)), camera_info);
-        polygon_corners.push_back(p3);
-        polygon_corners.push_back(p4);
+        // Point p1 = convert_depth_to_point(cv::Point(0, 0), static_cast<double>(depth_image.at<float>(0, 0)), camera_info);    
+        // polygon_corners.push_back(p1);
+        // Point p2 = convert_depth_to_point(cv::Point(depth_image.cols-1, 0), static_cast<double>(depth_image.at<float>(0, depth_image.cols-1)), camera_info);
+        // polygon_corners.push_back(p2);
+        // Point p3 = convert_depth_to_point(cv::Point(depth_image.cols-1, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, depth_image.cols-1)), camera_info);
+        // polygon_corners.push_back(p3);
+        // Point p4 = convert_depth_to_point(cv::Point(0, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, 0)), camera_info);
+        // polygon_corners.push_back(p4);
 
-        for (auto it = begin (polygon_corners); it != end (polygon_corners); ++it) {
-            convert_to_grid_coords(*it, 0, 0);
-            rotate_local_grid(*it, yaw);
-            get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
-        }
+        // for (auto it = begin (polygon_corners); it != end (polygon_corners); ++it) {
+        //     convert_to_grid_coords(*it, 0, 0);
+        //     rotate_local_grid(*it, yaw);
+        //     get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
+        // }
         
-        log_debug(t8.log());
+        // log_debug(t8.log());
 
         Timer t9 = Timer("polygon");
 
-        Point p;
-        for(int i = min_grid_y; i<max_grid_y ;i++) {
-            for(int j = min_grid_x;j<max_grid_x;j++) {
-                p.global_grid_x = j;
-                p.global_grid_y = i;
-                if(isPointInConvexPolygon(p, polygon_corners)) {
-                    size_t index = (i*grid_width)+j;
-                    log_odds_map[index] += log_odds_miss;
-                    if(log_odds_map[index] >= log_odds_mark) {
-                        full_map_msg->data[index] = 100;
-                    } else if(log_odds_map[index] > log_odds_miss) {
-                        full_map_msg->data[index] = -1;
-                    } else {
-                        full_map_msg->data[index] = 0;
-                    }    
+        for (auto it = begin (antipoints); it != end (antipoints); ++it) {
+            convert_to_grid_coords(*it, 0, 0);
+            rotate_local_grid(*it, yaw);
+            get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
+            if(it->global_grid_y < grid_height && it->global_grid_y >= 0 && it->global_grid_x >= 0 && it->global_grid_x < grid_width) {
+                size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
+                instant_map_msg->data[index] = 0;
+                log_odds_map[index] += log_odds_miss;
+                if(abs(log_odds_map[index]) > 5) {
+                    log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*5;    
                 }
+                if(log_odds_map[index] >= log_odds_mark) {
+                    full_map_msg->data[index] = 100;
+                } else if(log_odds_map[index] > log_odds_miss) {
+                    full_map_msg->data[index] = -1;
+                } else {
+                    full_map_msg->data[index] = 0;
+                }    
+            } else {
+                log("Assignment exceeds map dimensions");
             }
         }
+
+        // Point p;
+        // for(int i = min_grid_y; i<max_grid_y ;i++) {
+        //     for(int j = min_grid_x;j<max_grid_x;j++) {
+        //         // p.global_grid_x = j;
+        //         // p.global_grid_y = i;
+        //         // if(isPointInConvexPolygon(p, polygon_corners)) {
+        //             size_t index = (i*grid_width)+j;
+        //             log_odds_map[index] += log_odds_miss;
+        //             if(log_odds_map[index] >= log_odds_mark) {
+        //                 full_map_msg->data[index] = 100;
+        //             } else if(log_odds_map[index] > log_odds_miss) {
+        //                 full_map_msg->data[index] = -1;
+        //             } else {
+        //                 full_map_msg->data[index] = 0;
+        //             }    
+        //         // }
+        //     }
+        // }
+
 
         log_debug(t9.log());
 
@@ -517,9 +548,11 @@ private:
     cv::Mat depth_image, mask_image;
     std::vector<cv::Point> locations;
     std::vector<Point> points;
+    std::vector<Point> antipoints;
     std::shared_ptr<nav_msgs::msg::OccupancyGrid> instant_map_msg;
     std::shared_ptr<nav_msgs::msg::OccupancyGrid> full_map_msg;
     bool sim;
+    double log_odds_clamp;
 };
 
 
