@@ -13,6 +13,8 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(example_interfaces REQUIRED)
@@ -23,6 +25,47 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+find_package(interfaces REQUIRED)
+
+
+add_library(find_intersection_action_server SHARED
+  src/find_intersection_action_server.cpp
+)
+
+target_include_directories(find_intersection_action_server PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_compile_definitions(find_intersection_action_server
+  PRIVATE "MAP_REVISER_BUILDING_DLL"
+)
+
+ament_target_dependencies(find_intersection_action_server
+  "rclcpp"
+  "rclcpp_action"
+  "rclcpp_components"
+  "nav_msgs"
+  "tf2"
+  "tf2_ros"
+  "geometry_msgs"
+  "interfaces"
+)
+
+
+rclcpp_components_register_node(find_intersection_action_server
+  PLUGIN "FindIntersectionActionServer"
+  EXECUTABLE find_intersection_action_server_node
+)
+
+# Install
+install(TARGETS
+  find_intersection_action_server
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
 
 
 # Create executable
