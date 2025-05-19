@@ -6,7 +6,7 @@ source_setup () {
     fi
 }
 export MAKEFLAGS="-j 2"
-colcon build --packages-select interfaces
+colcon build --packages-select interfaces topic_remapper intersection_detector
 source_setup
 colcon build --packages-ignore interfaces --executor sequential
 source_setup
