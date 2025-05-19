@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <vector>
 #include <mutex>
-#include <tf2/LinearMath/Quaternion.h>  // Added for quaternion handling
+#include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 
 #ifdef DEBUG
@@ -87,8 +87,8 @@ private:
 };
 
 struct ObjectType {
-    std::string name;         // Internal name
-    std::string topic_name;   // Name used in ROS topics
+    std::string name;
+    std::string topic_name;
     float min_height;
     float max_height;
     
@@ -112,7 +112,6 @@ struct ObjectDetection {
         : type(type), global_position(pos), log_odds(initial_log_odds), last_update(time) {}
 };
 
-// Modified HeightMaskPublisherNode class with fixes
 
 class HeightMaskPublisherNode : public rclcpp::Node
 {
@@ -127,13 +126,13 @@ public:
         RCLCPP_INFO(this->get_logger(), "height_mask_publisher_node started");
         this->declare_parameter("sim", rclcpp::PARAMETER_BOOL);
         sim = this->get_parameter("sim").as_bool();
-        // Define object types with their height ranges
+        
         object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
         object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.6f, 1.2f));
-        // object_types.push_back(ObjectType("stop_sign", "stop_sign", 1.4f, 1.8f));
+        
         object_types.push_back(ObjectType("stop_sign", "stop_sign", 1.8f, 2.2f));
         
-        // Create subscriptions
+        
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
             "/zed_node/stereocamera/image_raw", 10, 
             std::bind(&HeightMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
@@ -149,38 +148,37 @@ public:
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odom", 10, 
             std::bind(&HeightMaskPublisherNode::odomCallback, this, std::placeholders::_1));
-        
-        // Initialize flags
+
         rgb_recv = false;
         depth_recv = false;
         camera_info_recv = false;
         odom_recv = false;
 
-        // Create publishers for each object type
+        
         for (const auto& obj_type : object_types) {
-            // Create mask image publisher
+            
             mask_publishers[obj_type.name] = this->create_publisher<sensor_msgs::msg::Image>(
                 "/height_mask/" + obj_type.topic_name, 10);
             
-            // Create centroid publisher
+            
             centroid_publishers[obj_type.name] = this->create_publisher<geometry_msgs::msg::Point>(
                 "/detector/" + obj_type.topic_name + "/coordinates", 10);
             
-            // Debug log creation of publishers
+            
             RCLCPP_INFO(this->get_logger(), "Created publisher for /detector/%s/coordinates", 
                         obj_type.topic_name.c_str());
         }
         
-        // Create point cloud publisher
+        
         pointcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/height_mask/pointcloud", 10);
 
-        // Create timers
+        
         timer = this->create_wall_timer(
-            std::chrono::milliseconds(40), std::bind(&HeightMaskPublisherNode::timer_callback, this));
+            std::chrono::milliseconds(100), std::bind(&HeightMaskPublisherNode::timer_callback, this));
             
-        // Add a timer for log odds updating
+        
         log_odds_timer = this->create_wall_timer(
-            std::chrono::milliseconds(500), std::bind(&HeightMaskPublisherNode::log_odds_callback, this));
+            std::chrono::milliseconds(150), std::bind(&HeightMaskPublisherNode::log_odds_callback, this));
     };
 
 private:
@@ -289,7 +287,7 @@ private:
         float det = A * D - B * C;
 
         if (std::abs(det) < 1e-6) {
-            // Handle singularity or throw error
+            
             throw std::runtime_error("Singular matrix in baseLinkToCloudPoint");
         }
 
@@ -335,9 +333,9 @@ private:
         }
         
         cv::Mat labels, stats, centroids_mat;
-        int num_labels = cv::connectedComponentsWithStats(valid_points, labels, stats, centroids_mat, 8); // basically clustering
+        int num_labels = cv::connectedComponentsWithStats(valid_points, labels, stats, centroids_mat, 8); 
         
-        centroids = centroids_mat; // Store centroids for later use
+        centroids = centroids_mat; 
         max_obstacle_heights.resize(num_labels, 0.0f);
         
         for (int i = 0; i < depth_image.rows; i++) {
@@ -378,10 +376,10 @@ private:
                 return;
             }
             
-            // Lock to safely access bot_pose during processing
+            
             std::lock_guard<std::mutex> lock(odom_mutex_);
             
-            // Create mask images for each object type
+            
             std::unordered_map<std::string, cv::Mat> masks;
             for (const auto& obj_type : object_types) {
                 masks[obj_type.name] = cv::Mat(rgb_image.rows, rgb_image.cols, CV_8U, cv::Scalar(0));
@@ -392,7 +390,7 @@ private:
             cv::Mat centroids_mat;
             computeObstacleLabels(depth_image, camera_info, obstacle_labels, max_obstacle_heights, centroids_mat);
             
-            // Classify obstacles based on height
+            
             std::vector<std::string> obstacle_types(max_obstacle_heights.size(), "");
             for (size_t i = 1; i < max_obstacle_heights.size(); i++) {
                 float max_height = max_obstacle_heights[i];
@@ -405,7 +403,7 @@ private:
                 }
             }
             
-            // Create centroids for each object type
+            
             std::unordered_map<std::string, std::vector<Centroid3D>> type_centroids;
             std::unordered_map<std::string, std::unordered_map<int, int>> type_centroid_indices;
             
@@ -413,7 +411,7 @@ private:
                 type_centroids[obj_type.name] = std::vector<Centroid3D>();
             }
             
-            // Initialize centroid data structures
+            
             for (size_t i = 1; i < obstacle_types.size(); i++) {
                 const std::string& type = obstacle_types[i];
                 if (!type.empty()) {
@@ -422,11 +420,11 @@ private:
                 }
             }
 
-            // Process each point
+            
             for (int i = 0; i < depth_image.rows; i++) {
                 for (int j = 0; j < depth_image.cols; j++) {
                     int label = obstacle_labels.at<int>(i, j);
-                    if (label > 0) { // Skip background
+                    if (label > 0) { 
                         double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
                         if (std::isfinite(depthvalue) && depthvalue > 0) {
                             const std::string& type = obstacle_types[label];
@@ -436,10 +434,10 @@ private:
                                 if (this->sim){
                                 Point base_point = cloudPointToBaselink(base_point);
                                 }
-                                // Update mask
+                                
                                 masks[type].at<uchar>(i, j) = 255;
                                 
-                                // Update centroid
+                                
                                 type_centroids[type][type_centroid_indices[type][label]].addPoint(
                                     base_point.x, base_point.y, base_point.z);
                             }
@@ -450,15 +448,15 @@ private:
             
             rclcpp::Time current_time = this->now();
             
-            // Finalize centroids and publish masks and centroids
+            
             for (const auto& obj_type : object_types) {
                 std::vector<Centroid3D> confident_centroids;
                 
-                // First pass: update object detections
+                
                 for (auto& centroid : type_centroids[obj_type.name]) {
                     centroid.finalize();
                     
-                    if (centroid.point_count > 100) { // Added threshold for point count
+                    if (centroid.point_count > 100) { 
                         Point base_point = {centroid.x, centroid.y, centroid.z};
                         if (this->sim){
                         Point base_point = baseLinkToCloudPoint(base_point);
@@ -467,22 +465,32 @@ private:
 
                         bool matched = false;
                         for (auto& detection : object_detections) {
-                            if (detection.type == obj_type.name && distance(detection.global_position, global_point) < 1.0) {
-                                detection.log_odds += prob_to_logodds(0.8);
+                            if (detection.type == obj_type.name && distance(detection.global_position, global_point) < 0.8) {
+                                double time_diff = (current_time - detection.last_update).seconds();
+                                
+                                if (time_diff < 0.5) {
+                                    detection.log_odds += 0.2;
+                                } else {
+                                    detection.log_odds += 0.1;
+                                }
+                                
+                                
                                 if (detection.log_odds > 5.0) {
                                     detection.log_odds = 5.0;
                                 }
+                                
+                                RCLCPP_DEBUG(this->get_logger(), "Updated %s detection at (%.2f, %.2f, %.2f), log odds now: %.2f",
+                                        detection.type.c_str(), global_point.x, global_point.y, global_point.z, detection.log_odds);
 
                                 detection.last_update = current_time;
-                                detection.global_position = global_point; // Update position
+                                detection.global_position = global_point;
                                 matched = true;
                                 break;
                             }
                         }
                         
                         if (!matched) {
-                            // Start with higher initial probability for faster convergence
-                            double initial_log_odds = prob_to_logodds(0.5);
+                            double initial_log_odds = 0.0;
                             ObjectDetection new_detection(obj_type.name, global_point, initial_log_odds, current_time);
                             object_detections.push_back(new_detection);
                             RCLCPP_INFO(this->get_logger(), "New %s detection at (%.2f, %.2f, %.2f)", 
@@ -491,14 +499,10 @@ private:
                     }
                 }
                 
-                // Second pass: collect confident centroids
                 for (const auto& detection : object_detections) {
-                    if (detection.type == obj_type.name && logodds_to_prob(detection.log_odds) > 0.9) { // Lower threshold
-                        // Convert back to camera frame for publishing
+                    if (detection.type == obj_type.name && logodds_to_prob(detection.log_odds) > 0.9) {
                         Point cloud_point;
                         Point base_point;
-                        
-                        // Find the closest centroid to this detection
                         for (auto& centroid : type_centroids[obj_type.name]) {
                             if (centroid.point_count > 100) {
                                 confident_centroids.push_back(centroid);
@@ -507,14 +511,20 @@ private:
                     }
                 }
                 
-                // Publish centroids directly from confident_centroids
                 if (!confident_centroids.empty()) {
                     RCLCPP_INFO(this->get_logger(), "Publishing %zu confident %s centroid(s)", 
                               confident_centroids.size(), obj_type.name.c_str());
                     publishCentroids(confident_centroids, centroid_publishers[obj_type.name]);
                 }
+                for (const auto& detection : object_detections) {
+                    if (detection.type == obj_type.name && logodds_to_prob(detection.log_odds) > 0.9) {
+                        RCLCPP_INFO(this->get_logger(), "%s detection at (%.2f, %.2f, %.2f) has log odds: %.2f (probability: %.2f)", 
+                                    obj_type.name.c_str(), detection.global_position.x, detection.global_position.y, 
+                                    detection.global_position.z, detection.log_odds, logodds_to_prob(detection.log_odds));
+                    }
+                }
                 
-                // Publish mask
+                
                 auto mask_msg = cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", masks[obj_type.name]).toImageMsg();
                 mask_publishers[obj_type.name]->publish(*mask_msg);
             }
@@ -549,8 +559,8 @@ private:
     }
 
     void timer_callback() {
-        // Check if all required data is available
-        bool recv = rgb_recv && depth_recv && camera_info_recv && odom_recv; // Added odometry check
+        
+        bool recv = rgb_recv && depth_recv && camera_info_recv && odom_recv; 
         if (recv) {
             try {
                 publish_mask(rgb_image_msg, depth_image_msg, camera_info_msg);
@@ -558,7 +568,7 @@ private:
                 RCLCPP_ERROR(this->get_logger(), "Exception in timer_callback: %s", e.what());
             }
         } else {
-            // Log what's missing to help troubleshoot
+            
             if (!rgb_recv) RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for RGB image");
             if (!depth_recv) RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for depth image");
             if (!camera_info_recv) RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for camera info");
@@ -570,15 +580,15 @@ private:
         rclcpp::Time current_time = this->now();
         std::vector<ObjectDetection> updated_detections;
 
-        for (auto& detection : object_detections) {
-            if (current_time - detection.last_update > rclcpp::Duration::from_seconds(1.0)) {
-                detection.log_odds -= prob_to_logodds(0.3);
-            }
+        for (auto& detection : object_detections) {   
 
+            detection.log_odds -= 0.1;
             if (detection.log_odds > -1.0) {
                 updated_detections.push_back(detection);
             } else {
-                RCLCPP_INFO(this->get_logger(), "Removed %s detection", detection.type.c_str());
+                RCLCPP_INFO(this->get_logger(), "Removed %s detection at (%.2f, %.2f, %.2f), log odds: %.2f",
+                        detection.type.c_str(), detection.global_position.x, detection.global_position.y,
+                        detection.global_position.z, detection.log_odds);
             }
         }
         object_detections = updated_detections;
@@ -600,7 +610,7 @@ private:
     nav_msgs::msg::Odometry::SharedPtr odom_msg;
 
     rclcpp::TimerBase::SharedPtr timer;
-    rclcpp::TimerBase::SharedPtr log_odds_timer;  // Added timer for log odds
+    rclcpp::TimerBase::SharedPtr log_odds_timer;  
 
     cv_bridge::CvImagePtr rgb_image_ptr, depth_image_ptr;
     cv::Mat rgb_image, depth_image;
