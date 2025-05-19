@@ -2,5 +2,4 @@
 local_costmap:
   width: 25.0  # meters
   height: 25.0  # meters
-  # resolution: 0.08  # meters/cell
   update_frequency: 10.0  # Hz

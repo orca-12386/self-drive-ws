@@ -210,6 +210,7 @@ def generate_launch_description():
             executable='lane_mapper_node',
             name='lane_mapper_node',
             parameters=[{
+                'sim': SIM,
                 'depth_sub_topic': depth_sub_topic,
                 'camera_info_sub_topic': camera_info_sub_topic,
                 'mask_sub_topic': '/mask/white',
@@ -221,6 +222,7 @@ def generate_launch_description():
             executable='lane_mapper_node',
             name='lane_mapper_node',
             parameters=[{
+                'sim': SIM,
                 'depth_sub_topic': depth_sub_topic,
                 'camera_info_sub_topic': camera_info_sub_topic,
                 'mask_sub_topic': '/mask/yellow',
@@ -340,28 +342,35 @@ def generate_launch_description():
 
 
     launch_detector = [
-        # Node(
-        #     package='detective',
-        #     executable='drum_detector_node',
-        #     name='drum_detector_node'
-        # ),
-        # Node(
-        #     package='detective',
-        #     executable='pedestrian_detector_node',
-        #     name='pedestrian_detector_node'
-        # ),
-        # Node(
-        #     package='detective',
-        #     executable='stop_sign_detector_node',
-        #     name='stop_sign_detector_node'
-        # ),
+        Node(
+            package='detective',
+            executable='drum_detector_node',
+            name='drum_detector_node'
+        ),
+        Node(
+            package='detective',
+            executable='pedestrian_detector_node',
+            name='pedestrian_detector_node'
+        ),
+        Node(
+            package='detective',
+            executable='stop_sign_detector_node',
+            name='stop_sign_detector_node'
+        ),
+        Node(
+            package='detective',
+            executable='pothole_detector_node',
+            name='pothole_detector_node'
+        )
+    ]
+
+    launch_intersection_detector = [
         Node(
             package='intersection_detector',
             executable='intersection_detector_node',
             name='intersection_detector_node'
         )
     ]
-
 
     launch_behaviour_manager = [
         Node(
@@ -424,7 +433,10 @@ def generate_launch_description():
         Node(
             package='height_mapper',
             executable='height_mask_publisher_node',
-            name='height_mask_publisher_node'
+            name='height_mask_publisher_node',
+            parameters=[{
+                'sim': SIM,
+            }]
         )
     ]
 
@@ -462,12 +474,13 @@ def generate_launch_description():
     
     # launch_description.extend(launch_behaviour_manager)
   
+    launch_description.extend(launch_intersection_detector)
+
     # launch_description.extend(launch_detector)
-  
+    launch_description.extend(launch_height_mapper)
+
     launch_description.extend(launch_topic_remapper)
 
     launch_description.extend(launch_pose_publishers)
-    # launch_description.extend(launch_height_mapper)
-
 
     return LaunchDescription(launch_description)

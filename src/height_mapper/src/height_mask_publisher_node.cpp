@@ -6,8 +6,6 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
-#include <sensor_msgs/msg/point_field.hpp>
-#include <sensor_msgs/image_encodings.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -24,9 +22,6 @@
 #include <mutex>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
 
 #ifdef DEBUG
 #define DEBUG_LOG(logger, msg) RCLCPP_INFO(logger, msg)
@@ -127,39 +122,31 @@ public:
     cos_pitch(cos(pitch)),
     sin_pitch(sin(pitch))
     {
-        this->declare_parameter<std::string>("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
-        this->declare_parameter<std::string>("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
-        this->declare_parameter<std::string>("camera_info_sub_topic", "/zed/zed_node/rgb/camera_info");
     
-        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
-        std::string color_sub_topic = this->get_parameter("color_sub_topic").as_string();
-        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
-
-
         RCLCPP_INFO(this->get_logger(), "height_mask_publisher_node started");
         this->declare_parameter("sim", rclcpp::PARAMETER_BOOL);
         sim = this->get_parameter("sim").as_bool();
         
-        object_types.push_back(ObjectType("tyre", "tyre", 0.0f, 0.6f));
+        object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
         object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.6f, 1.2f));
         
         object_types.push_back(ObjectType("stop_sign", "stop_sign", 1.8f, 2.2f));
         
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            color_sub_topic, 10, 
+            "/zed_node/stereocamera/image_raw", 10, 
             std::bind(&HeightMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
     
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            depth_sub_topic , 10, 
+            "/zed_node/stereocamera/depth/image_raw", 10, 
             std::bind(&HeightMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
 
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            camera_info_sub_topic, 10, 
+            "/zed_node/stereocamera/camera_info", 10, 
             std::bind(&HeightMaskPublisherNode::cameraInfoCallback, this, std::placeholders::_1));
     
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/odom/transformed", 10, 
+            "/odom", 10, 
             std::bind(&HeightMaskPublisherNode::odomCallback, this, std::placeholders::_1));
 
         rgb_recv = false;
@@ -275,7 +262,11 @@ private:
                         cloud_point.z * cos(bot_pose.yaw));
         global_point.y = (bot_pose.y + cloud_point.z * sin(bot_pose.yaw) -
                         cloud_point.x * cos(bot_pose.yaw));
-        global_point.z = -1 * cloud_point.y + 1.5;
+        if(this->sim) {
+            global_point.z = -1 * cloud_point.y + 1.5;    
+        } else {
+            global_point.z = cloud_point.y;
+        }
         return global_point;
     }
 
@@ -284,9 +275,9 @@ private:
         base_link_point.x = cloud_point.z * cos_pitch - cloud_point.y * sin_pitch;
         base_link_point.y = -cloud_point.x;
         if(this->sim) {
-            base_link_point.z = 1.5f - cloud_point.z * sin_pitch - cloud_point.y * cos_pitch;
+            base_link_point.z = 1.5f - cloud_point.z * sin_pitch - cloud_point.y * cos_pitch;        
         } else {
-            base_link_point.z = cloud_point.z * sin_pitch + cloud_point.y * cos_pitch;
+            base_link_point.z = cloud_point.z * sin_pitch + cloud_point.y * cos_pitch;        
         }
         return base_link_point;
     }
@@ -340,9 +331,7 @@ private:
                 }
                 
                 Point base_point = convert_depth_to_point(j, i, depthvalue, camera_info);
-                // if (this->sim){
                 base_point = cloudPointToBaselink(base_point);
-                // }
                 if (base_point.x > 1.5 && base_point.x < 15 && base_point.z > 0.1 && base_point.z < 2.0) {
                     valid_points.at<uchar>(i, j) = 255;
                 }
@@ -376,56 +365,6 @@ private:
         
         RCLCPP_DEBUG(this->get_logger(), "Found %d connected components", num_labels);
     }
-
-    void publish_pointcloud(const sensor_msgs::msg::Image::ConstSharedPtr depth,
-                            const sensor_msgs::msg::CameraInfo::SharedPtr camera_info,
-                            rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub) 
-    {
-        // Convert depth image to OpenCV format
-        cv_bridge::CvImagePtr depth_image_ptr;
-        depth_image_ptr = cv_bridge::toCvCopy(depth, depth->encoding);
-        cv::Mat depth_image = depth_image_ptr->image;
-
-        int width = depth->width;
-        int height = depth->height;
-
-        pcl::PointCloud<pcl::PointXYZ> cloud;
-        cloud.width = width;
-        cloud.height = height;
-        cloud.is_dense = false;
-        cloud.points.resize(width * height);
-
-        // Fill the point cloud
-        for (int v = 0; v < height; ++v) {
-            for (int u = 0; u < width; ++u) {
-                float depth_raw = depth_image.at<float>(v, u);  // assumes 32FC1
-                float depth_point = depth_raw * 0.001f;  // convert mm to meters if needed
-
-                pcl::PointXYZ& pt = cloud.at(u, v);
-
-                if (depth_raw <= 0.0f || std::isnan(depth_raw)) {
-                    pt.x = pt.y = pt.z = std::numeric_limits<float>::quiet_NaN();
-                    continue;
-                }
-
-                // Convert depth to 3D point using camera intrinsics
-                Point p = convert_depth_to_point(u, v, depth_point, camera_info);
-
-                pt.x = static_cast<float>(p.x);
-                pt.y = static_cast<float>(p.y);
-                pt.z = static_cast<float>(p.z);
-            }
-        }
-
-        // Convert to ROS PointCloud2 message
-        sensor_msgs::msg::PointCloud2 msg;
-        pcl::toROSMsg(cloud, msg);
-        msg.header.stamp = this->now();
-        msg.header.frame_id = "base_link";  // Set appropriately
-
-        pub->publish(msg);
-    }
-
 
     void publish_mask(sensor_msgs::msg::Image::SharedPtr rgb, sensor_msgs::msg::Image::SharedPtr depth, 
                      sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {    
@@ -607,9 +546,7 @@ private:
         bool recv = rgb_recv && depth_recv && camera_info_recv && odom_recv; 
         if (recv) {
             try {
-                
                 publish_mask(rgb_image_msg, depth_image_msg, camera_info_msg);
-                publish_pointcloud(depth_image_msg, camera_info_msg, pointcloud_pub);
             } catch (const std::exception& e) {
                 RCLCPP_ERROR(this->get_logger(), "Exception in timer_callback: %s", e.what());
             }

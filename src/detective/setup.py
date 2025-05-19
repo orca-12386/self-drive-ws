@@ -23,7 +23,8 @@ setup(
         'console_scripts': [
             'drum_detector_node = detective.drum_detector_node:main',
             'stop_sign_detector_node = detective.stop_sign_detector_node:main',
-            'pedestrian_detector_node = detective.pedestrian_detector_node:main',   
+            'pedestrian_detector_node = detective.pedestrian_detector_node:main',
+            'pothole_detector_node = detective.pothole_detector_node:main'
             'saver = detective.im_saver:main',
             'ocrstop = detective.stopocr:main',
             'rukja = detective.ocr2:main',
