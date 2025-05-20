@@ -13,6 +13,7 @@ class StopServer(Node):
     def __init__(self):
         super().__init__('stop_server')
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.cmd_vel_subscription = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.action_server = ActionServer(self, StopAction, 'StopAction', execute_callback=self.execute_callback)
         self.get_logger().info("Stop Server Started")
@@ -26,13 +27,15 @@ class StopServer(Node):
     def odom_callback(self, msg):
         self.bot_position = msg.pose.pose.position
         self.bot_orientation = msg.pose.pose.orientation
+    
+    def cmd_vel_callback(self, msg):
+        self.current_cmd_vel = msg
         
     def check_movement(self):
         log_time = time.time()
-        if self.prev_bot_position is None or (log_time - self.prev_log_time) > 2:
-            if not (self.prev_bot_position is None):
-                return (self.prev_bot_position.x - self.bot_position.x) + (self.prev_bot_position.y - self.bot_position.y) + (self.prev_bot_position.z - self.bot_position.z) > 0.1
-            self.prev_bot_position = self.bot_position
+        if (log_time - self.prev_log_time) > 2:
+            if not (self.current_cmd_vel is None):
+                return (self.current_cmd_vel.linear.x > 0.1) or (self.current_cmd_vel.angular.z > 0.1)
             self.prev_log_time = log_time
         return False
 
