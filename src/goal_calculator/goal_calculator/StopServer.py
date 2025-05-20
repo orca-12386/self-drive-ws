@@ -5,15 +5,18 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, Twist
 from interfaces.action import GoalAction as StopAction
 from rclpy.executors import MultiThreadedExecutor
+from actionlib_msgs.msg import GoalID
 import time
 import asyncio
+import math
 
 
 class StopServer(Node):
     def __init__(self):
         super().__init__('stop_server')
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
+        self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cancel_publisher = self.create_publisher(GoalID, "/move_base/cancel",10)
         self.action_server = ActionServer(self, StopAction, 'StopAction', execute_callback=self.execute_callback)
         self.get_logger().info("Stop Server Started")
         self.bot_position = None
@@ -27,42 +30,33 @@ class StopServer(Node):
         self.bot_position = msg.pose.pose.position
         self.bot_orientation = msg.pose.pose.orientation
         
-    def check_movement(self):
-        log_time = time.time()
-        if self.prev_bot_position is None or (log_time - self.prev_log_time) > 2:
-            if not (self.prev_bot_position is None):
-                return (self.prev_bot_position.x - self.bot_position.x) + (self.prev_bot_position.y - self.bot_position.y) + (self.prev_bot_position.z - self.bot_position.z) > 0.1
-            self.prev_bot_position = self.bot_position
-            self.prev_log_time = log_time
-        return False
+    # def check_movement(self):
+    #     log_time = time.time()
+    #     if self.prev_bot_position is None or (log_time - self.prev_log_time) > 2:
+    #         if not (self.prev_bot_position is None):
+    #             self.get_logger().info(f"Current Change in Distance{math.sqrt((self.prev_bot_position.x - self.bot_position.x)**2 + (self.prev_bot_position.y - self.bot_position.y)**2)}")
+    #             return math.sqrt((self.prev_bot_position.x - self.bot_position.x)**2 + (self.prev_bot_position.y - self.bot_position.y)**2) > 0.1
+    #         self.prev_bot_position = self.bot_position
+    #         self.prev_log_time = log_time
+    #     return False
 
     async def execute_callback(self, goal_handle):
         self.get_logger().info("Stop Action Received")
         
-        self.goal_pose = PoseStamped()
-        self.goal_pose.header.frame_id = 'map'
-        self.goal_pose.header.stamp = self.get_clock().now().to_msg()
-        self.goal_pose.pose.position = self.bot_position
-        self.goal_pose.pose.orientation = self.bot_orientation
-
-        self.goal_publisher.publish(self.goal_pose)
-
         feedback_msg = StopAction.Feedback()
-        rate = self.create_rate(2)  
-
-        while True:
-            if not self.check_movement():
-                break
-            self.goal_pose.pose.position = self.bot_position
-            self.goal_pose.pose.orientation = self.bot_orientation
-            self.goal_publisher.publish(self.goal_pose)
-            feedback_msg.feedback = f"Linear: {self.current_cmd_vel.linear.x}, Angular: {self.current_cmd_vel.angular.z}"
-            goal_handle.publish_feedback(feedback_msg)
-            self.get_logger().info(f"Current Velocity: {feedback_msg.feedback}")
-            rate.sleep()
 
         time.sleep(3)
-        
+        self.get_logger().info("Sending cancel action")
+        cancel_msg = GoalID()
+        cancel_msg.id = ""
+        cancel_msg.stamp = self.get_clock().now().to_msg()
+        self.cancel_publisher.publish(cancel_msg) 
+        self.get_logger().info("Sent cancel action to move_base")
+        cmd_vel_msg = Twist()
+        cmd_vel_msg.linear.x = 0.0
+        cmd_vel_msg.angular.z = 0.0
+        self.cmd_vel_publisher.publish(cmd_vel_msg)
+        self.get_logger().info("Sent 0,0 cmd_vels")
         self.get_logger().info("Stop Action Completed")
         goal_handle.succeed()
         result = StopAction.Result()
