@@ -9,12 +9,12 @@ def generate_launch_description():
             name='lidar_tf',
             output='screen'
         ),
-        Node(
-            package='transforms',
-            executable='odom_pc',
-            name='odom_pc',
-            output='screen'
-        ),
+        # Node(
+        #     package='transforms',
+        #     executable='odom_pc',
+        #     name='odom_pc',
+        #     output='screen'
+        # ),
         Node(
             package='transforms',
             executable='zed_tf',

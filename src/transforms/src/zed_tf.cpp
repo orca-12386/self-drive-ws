@@ -16,7 +16,7 @@ public:
 
     // Subscribers
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-      "/zed/zed_node/imu/data", 10,
+      "/zed_node/imu/data", 10,
       std::bind(&ImuTransformer::imuCallback, this, std::placeholders::_1));
 
     // TF Broadcaster
@@ -58,11 +58,11 @@ private:
     // Create transform
     geometry_msgs::msg::TransformStamped transform;
     transform.header.stamp = now();
-    transform.header.frame_id = "robot/base_link";
+    transform.header.frame_id = "base_link";
     transform.child_frame_id = "zed_camera_link";
 
     tf2::Quaternion corrected_orientation;
-    corrected_orientation.setRPY(0.0, avg_pitch, 0.0);
+    corrected_orientation.setRPY(roll, avg_pitch, 0.0);
     transform.transform.rotation.x = corrected_orientation.x();
     transform.transform.rotation.y = corrected_orientation.y();
     transform.transform.rotation.z = corrected_orientation.z();

@@ -58,25 +58,11 @@ ament_target_dependencies(height_mask_publisher_node
   pcl_conversions
 )
 
-add_executable(pc_odom src/pc_odom.cpp)
-ament_target_dependencies(pc_odom
-  rclcpp
-  sensor_msgs
-  geometry_msgs
-  nav_msgs
-  tf2
-  tf2_ros
-  tf2_sensor_msgs
-  pcl_conversions
-)
-
-
 
 # Install the executable
 install(TARGETS
   height_mapper_node
   height_mask_publisher_node
-  pc_odom
   DESTINATION lib/${PROJECT_NAME}
 )
 

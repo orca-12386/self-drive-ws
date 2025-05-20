@@ -139,9 +139,9 @@ def generate_launch_description():
             }.items()
         )
 
-        transforms_launch  = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(transforms_dir,'launch','transforms.launch.py'))
-        )
+        # transforms_launch  = IncludeLaunchDescription(
+        #     PythonLaunchDescriptionSource(os.path.join(transforms_dir,'launch','transforms.launch.py'))
+        # )
 
         # zed_no_tf_launch = IncludeLaunchDescription(
         #     PythonLaunchDescriptionSource(os.path.join(zed_wrapper_dir, 'launch', 'zed_camera.launch.py')),
@@ -150,32 +150,44 @@ def generate_launch_description():
         #     }.items()
         # )
 
-
+        #deemed necessary
         lidar_tf = [
             Node(
                 package='transforms',
                 executable='lidar_tf',
-                name='ouster_transformer',
-                parameters=[{
-                    'mask_sub_topic': '/mask/white',
-                    'map_pub_topic': '/map/white'
-                }])
+                name='lidar_tf',
+                output='screen'
+            ),
         ]
-
+        #deemed necessary
         zed_tf = [
             Node(
                 package='transforms',
                 executable='zed_tf',
-                name='zed_imu_transformer',
-                parameters=[{
-                    'mask_sub_topic': '/mask/white',
-                    'map_pub_topic': '/map/white'
-                }])
+                name='zed_tf',
+                output='screen'
+            )
         ]
-
-        
+        base_link_lidar_tf = [        
+            Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                name='static_tf_pub',
+                arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'os_sensor'],
+                output='screen'
+            )
+        ]
+        map_odom_tf = [        
+            Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                name='map_tf',
+                arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
+                output='screen'
+            )
+        ]
         launch_sensors = [
-            transforms_launch,
+            # transforms_launch,
             declare_sensor_hostname,
             declare_pointcloud_topic,
             declare_imu_topic,
@@ -440,13 +452,13 @@ def generate_launch_description():
         )
     ]
 
-    launch_odom_tf = [
-        Node(
-            package="transforms",
-            executable="odom_tf",
-            name = 'odom_trasformer'
-        )
-    ]
+    # launch_odom_tf = [
+    #     Node(
+    #         package="transforms",
+    #         executable="odom_tf",
+    #         name = 'odom_transformer'
+    #     ),
+    # ]
 
 
     launch_description = list()
@@ -458,8 +470,10 @@ def generate_launch_description():
     else:
         launch_description.extend(zed_tf)
         launch_description.extend(lidar_tf)
+        launch_description.extend(base_link_lidar_tf)
+        launch_description.extend(map_odom_tf)
         launch_description.extend(launch_sensors)
-        launch_description.extend(launch_odom_tf)
+        # launch_description.extend(launch_odom_tf)
 
     if MOVEMENT:
         launch_description.extend(launch_motion_control)

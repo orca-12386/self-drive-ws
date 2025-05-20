@@ -12,6 +12,9 @@ find_package(pcl_conversions REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(tf2_sensor_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(image_geometry REQUIRED)
+find_package(tf2_eigen REQUIRED)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 14)
@@ -38,11 +41,15 @@ foreach(target
         sensor_msgs
         std_msgs
         nav_msgs
+        tf2_eigen
         tf2_ros
         geometry_msgs
         pcl_conversions
         pcl_ros
         tf2_sensor_msgs
+        cv_bridge
+        image_geometry
+        tf2_eigen
     )
 endforeach()
 
@@ -72,6 +79,8 @@ ament_export_dependencies(
     pcl_conversions
     pcl_ros
     tf2_sensor_msgs
+    cv_bridge
+    image_geometry
 )
 
 ament_package()

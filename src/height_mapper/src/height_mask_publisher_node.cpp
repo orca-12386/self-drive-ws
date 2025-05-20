@@ -22,6 +22,14 @@
 #include <mutex>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
+
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"  // For tf2::doTransform
+
 
 #ifdef DEBUG
 #define DEBUG_LOG(logger, msg) RCLCPP_INFO(logger, msg)
@@ -118,7 +126,7 @@ class HeightMaskPublisherNode : public rclcpp::Node
 public:
     HeightMaskPublisherNode() : 
     rclcpp::Node("height_mask_publisher_node"),
-    pitch(23.5f * M_PI / 180.0f),
+    pitch(18.0f * M_PI / 180.0f),
     cos_pitch(cos(pitch)),
     sin_pitch(sin(pitch))
     {
@@ -134,20 +142,23 @@ public:
         
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/image_raw", 10, 
+            "/zed_node/rgb/image_rect_color", 10, 
             std::bind(&HeightMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
     
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/depth/image_raw", 10, 
+            "zed_node/depth/depth_registered", 10, 
             std::bind(&HeightMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
 
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/zed_node/stereocamera/camera_info", 10, 
+            "/zed_node/rgb/camera_info", 10, 
             std::bind(&HeightMaskPublisherNode::cameraInfoCallback, this, std::placeholders::_1));
     
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odom", 10, 
             std::bind(&HeightMaskPublisherNode::odomCallback, this, std::placeholders::_1));
+
+        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         rgb_recv = false;
         depth_recv = false;
@@ -249,10 +260,33 @@ private:
         double z = depth;
         double x = ((u-cx)*z)/fx;
         double y = ((v-cy)*z)/fy;
+
+        // Apply transform same as in odom_pc
+        geometry_msgs::msg::PointStamped point_in, point_out;
+        point_in.header.frame_id = "base_link";
+        point_in.header.stamp = depth_image_msg->header.stamp;
+        point_in.point.x = x;
+        point_in.point.y = y;
+        point_in.point.z = z;
+
         Point p;
-        p.x = x;
-        p.y = y;
-        p.z = z;
+
+        try {
+            tf2::doTransform(point_in, point_out, transformStamped);
+
+            p = {
+                point_out.point.x,
+                point_out.point.y,
+                point_out.point.z
+            };
+
+            // RCLCPP_INFO(this->get_logger(), "Transformed point: [%.2f, %.2f, %.2f]",
+            //             p.x, p.y, p.z);
+        }
+        catch (tf2::TransformException &ex) {
+            RCLCPP_WARN(this->get_logger(), "Could not transform point: %s", ex.what());
+        }
+
         return p;
     }
     
@@ -265,47 +299,9 @@ private:
         if(this->sim) {
             global_point.z = -1 * cloud_point.y + 1.5;    
         } else {
-            global_point.z = cloud_point.y;
+            global_point.z = - cloud_point.y;
         }
         return global_point;
-    }
-
-    Point cloudPointToBaselink(Point &cloud_point) {
-        Point base_link_point;
-        base_link_point.x = cloud_point.z * cos_pitch - cloud_point.y * sin_pitch;
-        base_link_point.y = -cloud_point.x;
-        if(this->sim) {
-            base_link_point.z = 1.5f - cloud_point.z * sin_pitch - cloud_point.y * cos_pitch;        
-        } else {
-            base_link_point.z = cloud_point.z * sin_pitch + cloud_point.y * cos_pitch;        
-        }
-        return base_link_point;
-    }
-
-    Point baseLinkToCloudPoint(Point &base_link_point) {
-        Point cloud_point;
-        
-        cloud_point.x = -base_link_point.y;
-
-        float A = cos_pitch;
-        float B = -sin_pitch;
-        float C = -sin_pitch;
-        float D = -cos_pitch;
-
-        float det = A * D - B * C;
-
-        if (std::abs(det) < 1e-6) {
-            
-            throw std::runtime_error("Singular matrix in baseLinkToCloudPoint");
-        }
-
-        float rhs1 = base_link_point.x;
-        float rhs2 = base_link_point.z - 1.5f;
-
-        cloud_point.z = (rhs1 * D - B * rhs2) / det;
-        cloud_point.y = (A * rhs2 - rhs1 * C) / det;
-
-        return cloud_point;
     }
 
     double distance(Point a, Point b){
@@ -331,7 +327,6 @@ private:
                 }
                 
                 Point base_point = convert_depth_to_point(j, i, depthvalue, camera_info);
-                base_point = cloudPointToBaselink(base_point);
                 if (base_point.x > 1.5 && base_point.x < 15 && base_point.z > 0.1 && base_point.z < 2.0) {
                     valid_points.at<uchar>(i, j) = 255;
                 }
@@ -352,9 +347,6 @@ private:
                     double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
                     if (std::isfinite(depthvalue) && depthvalue > 0) {
                         Point base_point = convert_depth_to_point(j, i, depthvalue, camera_info);
-                        if (this->sim){
-                        base_point = cloudPointToBaselink(base_point);
-                        }
                         obstacle_labels.at<int>(i, j) = label;
                         
                         max_obstacle_heights[label] = std::max(max_obstacle_heights[label], static_cast<float>(base_point.z));
@@ -437,9 +429,6 @@ private:
                             
                             if (!type.empty()) {
                                 Point base_point = convert_depth_to_point(j, i, depthvalue, camera_info);
-                                if (this->sim){
-                                Point base_point = cloudPointToBaselink(base_point);
-                                }
                                 
                                 masks[type].at<uchar>(i, j) = 255;
                                 
@@ -464,9 +453,6 @@ private:
                     
                     if (centroid.point_count > 100) { 
                         Point base_point = {centroid.x, centroid.y, centroid.z};
-                        if (this->sim){
-                        Point base_point = baseLinkToCloudPoint(base_point);
-                        }
                         Point global_point = cloudPointToGlobalPoint(base_point, bot_pose);
 
                         bool matched = false;
@@ -540,13 +526,106 @@ private:
                 RCLCPP_DEBUG(this->get_logger(), "Published centroid at (%.2f, %.2f, %.2f)",
                            centroid.x, centroid.y, centroid.z);
     }
+    void publish_pointcloud(const sensor_msgs::msg::Image::ConstSharedPtr depth,
+                            const sensor_msgs::msg::CameraInfo::SharedPtr camera_info,
+                            rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub) 
+    {
+        // Convert depth image to OpenCV format
+        cv_bridge::CvImagePtr depth_image_ptr;
+        try {
+            depth_image_ptr = cv_bridge::toCvCopy(depth, depth->encoding);
+        } catch (const cv_bridge::Exception& e) {
+            RCLCPP_ERROR(this->get_logger(), "CV bridge exception in point cloud publisher: %s", e.what());
+            return;
+        }
+        
+        cv::Mat depth_image = depth_image_ptr->image;
+        int width = depth->width;
+        int height = depth->height;
+
+        // Create point cloud
+        pcl::PointCloud<pcl::PointXYZ> cloud;
+        cloud.width = width;
+        cloud.height = height;
+        cloud.is_dense = false;
+        cloud.points.resize(width * height);
+
+        // Fill the point cloud using the depth_to_point function
+        float minx, miny, minz;
+        float maxx, maxy, maxz;
+        bool first = true;
+
+        for (int v = 0; v < height; ++v) {
+            for (int u = 0; u < width; ++u) {
+                float depth_value = depth_image.at<float>(v, u);  // Assuming 32FC1 depth encoding
+                
+                pcl::PointXYZ& pt = cloud.at(u, v);
+
+                if (!std::isfinite(depth_value) || depth_value <= 0) {
+                    pt.x = pt.y = pt.z = std::numeric_limits<float>::quiet_NaN();
+                    continue;
+                }
+
+                // Convert depth to 3D point using our existing function
+                Point p = convert_depth_to_point(u, v, depth_value, camera_info);
+                
+                pt.x = static_cast<float>(p.x);
+                pt.y = static_cast<float>(p.y);
+                pt.z = static_cast<float>(p.z);
+                if (first) {
+                    minx = static_cast<float>(p.x);
+                    miny = static_cast<float>(p.y);
+                    minz = static_cast<float>(p.z);
+                    maxx = static_cast<float>(p.x);
+                    maxy = static_cast<float>(p.y);
+                    maxz = static_cast<float>(p.z);
+                    first = false;
+                } else{
+                    if(pt.x > maxx) {
+                        maxx = pt.x;
+                    }
+                    if(pt.y > maxy) {
+                        maxy = pt.y;
+                    }
+                    if(pt.z > maxz) {
+                        maxz = pt.z;
+                    }
+                    if(pt.x < minx) {
+                        minx = pt.x;
+                    }
+                    if(pt.y < miny) {
+                        miny = pt.y;
+                    }
+                    if(pt.z < minz) {
+                        minz = pt.z;
+                    }
+                }
+            }
+        }
+
+        // Convert to ROS PointCloud2 message
+        sensor_msgs::msg::PointCloud2 msg;
+        pcl::toROSMsg(cloud, msg);
+        msg.header.stamp = this->now();
+        msg.header.frame_id = "map";  // Set frame ID according to your system
+        
+        RCLCPP_INFO(this->get_logger(), "x: %f to %f", minx, maxx);
+        RCLCPP_INFO(this->get_logger(), "y: %f to %f", miny, maxy);
+        RCLCPP_INFO(this->get_logger(), "z: %f to %f", minz, maxz);
+
+        // Publish the point cloud
+        pub->publish(msg);
+        RCLCPP_DEBUG(this->get_logger(), "Published PointCloud2 with %d points", width * height);
+    }
 
     void timer_callback() {
         
         bool recv = rgb_recv && depth_recv && camera_info_recv && odom_recv; 
         if (recv) {
             try {
+                transformStamped = tf_buffer_->lookupTransform("map", depth_image_msg->header.frame_id, depth_image_msg->header.stamp);
                 publish_mask(rgb_image_msg, depth_image_msg, camera_info_msg);
+                publish_pointcloud(depth_image_msg, camera_info_msg, pointcloud_pub);
             } catch (const std::exception& e) {
                 RCLCPP_ERROR(this->get_logger(), "Exception in timer_callback: %s", e.what());
             }
@@ -597,6 +676,13 @@ private:
 
     cv_bridge::CvImagePtr rgb_image_ptr, depth_image_ptr;
     cv::Mat rgb_image, depth_image;
+
+    geometry_msgs::msg::TransformStamped transformStamped;
+
+
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
     bool sim;
 };
 
