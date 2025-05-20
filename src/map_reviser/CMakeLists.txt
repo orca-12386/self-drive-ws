@@ -27,6 +27,7 @@ find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(interfaces REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 
 add_library(find_intersection_action_server SHARED
@@ -65,6 +66,23 @@ install(TARGETS
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+)
+
+
+add_executable(intersection_clearing_service src/intersection_clearer.cpp)
+
+ament_target_dependencies(intersection_clearing_service
+  rclcpp
+  nav_msgs
+  std_msgs
+  example_interfaces
+  tf2
+  visualization_msgs
+)
+
+install(TARGETS
+  intersection_clearing_service
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 
