@@ -24,7 +24,7 @@ global_costmap:
       height: 10
       use_sim_time: True
       robot_radius: 0.35
-      resolution: 0.06
+      resolution: 0.04
       track_unknown_space: false
       # plugins: ["static_layer", "obstacle_layer", "inflation_layer"] # , "voxel_layer"]
       plugins: ["static_layer", "inflation_layer"] # , "voxel_layer"]
@@ -93,5 +93,5 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 0.5
-        inflation_radius: 0.70
+        inflation_radius: 0.30
       always_send_full_costmap: false
