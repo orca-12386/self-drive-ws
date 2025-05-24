@@ -28,17 +28,17 @@ controller_server:
       debug_trajectory_details: false
       min_vel_x: 0.09
       min_vel_y: 0.01
-      max_vel_x: 1.7
-      max_vel_y: 1.7
-      max_vel_theta: 0.8
+      max_vel_x: 0.7
+      max_vel_y: 0.7
+      max_vel_theta: 0.5
       min_speed_xy: 0.0
       max_speed_xy: 1.7
       min_speed_theta: 0.0
-      acc_lim_x: 1.8
-      acc_lim_y: 1.5
+      acc_lim_x: 1.0
+      acc_lim_y: 1.0
       acc_lim_theta: 0.80
-      decel_lim_x: -2.5
-      decel_lim_y: -2.5
+      decel_lim_x: -2.0
+      decel_lim_y: -2.0
       decel_lim_theta: -5.0
       vx_samples: 60
       vy_samples: 40
@@ -76,13 +76,13 @@ local_costmap:
           durability: VOLATILE
       update_frequency: 5.0
       publish_frequency: 2.0
-      global_frame: odom
+      global_frame: map
       robot_base_frame: base_link
       use_sim_time: True
       rolling_window: true
       width: 10
       height: 10
-      resolution: 0.06
+      resolution: 0.04
       robot_radius: 0.2
       plugins: ["static_layer"] # , "inflation_layer"]
       # plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
