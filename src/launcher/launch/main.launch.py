@@ -19,9 +19,6 @@ def generate_launch_description():
     world_file = os.path.join(package_share_dir, 'world', 'self_drive_course_custom.world')
     robot_file = os.path.join(robo_desc_dir,'launch','robot.launch.py')
 
-    motion_planner_package = get_package_share_directory("planner_server_dwb")
-    motion_planner_launch_file = os.path.join(motion_planner_package, "launch", "planner.launch.py")
-
     config_launcher_path = os.path.join(get_package_share_directory("launcher"), "config", "config.yaml")
 
     with open(config_launcher_path) as stream:
@@ -31,7 +28,10 @@ def generate_launch_description():
             print(exc)
     
     SIM = config['sim']
-    MOVEMENT = config['movement']
+    DETECTION_MODE = config["detectors"]["mode"]
+    ENABLE_GOALS = config["goal_calculator"]["enable"]
+    ENABLE_BEHAVIOUR_MANAGER = config["behaviour_manager"]["enable"]
+    BEHAVIOUR_CODE = config["behaviour_manager"]["code"]
 
     if SIM:
         depth_sub_topic = "/zed_node/stereocamera/depth/image_raw"
@@ -196,13 +196,6 @@ def generate_launch_description():
             # zed_no_tf_launch,
         ]
 
-
-    launch_motion_control = [
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(motion_planner_launch_file),
-        )
-    ]
-
     launch_lane_masker = [
         Node(
             package='lane_mask_publisher',
@@ -245,6 +238,11 @@ def generate_launch_description():
             package='map_reviser',
             executable='nearest_lane_mapper_node',
             name='nearest_lane_mapper_node'
+        ),
+        Node(
+            package='map_reviser',
+            executable='intersection_clearing_service',
+            name='intersection_clearing_service'
         )
     ]
 
@@ -306,64 +304,59 @@ def generate_launch_description():
             executable='map_localiser_node',
             name='map_localiser_node',
             parameters=[{
-                'map_sub_topic': '/map/white'
+                'map_sub_topic': '/map/white',
+                'map_pub_topic': '/map/white/local/temp'
             }]
         )
     ]
 
 
     launch_goal_calculators = [
-        # # Lane Follow
-        # Node(
-        #     package='goal_calculator_cpp',
-        #     executable='lane_follower_node',
-        #     name='lane_follower_node'
-        # ),
+        # Lane Follow
+        Node(
+            package='goal_calculator_cpp',
+            executable='lane_follower_node',
+            name='lane_follower_node'
+        ),
         # Lane Change
-        # Node(
-        #     package='goal_calculator',
-        #     executable='lane_change_yellow',
-        #     name='lane_change_yellow',
-        #     output='screen',
-        #     parameters=[{
-        #         'config_file_path': os.path.join(
-        #             get_package_share_directory('goal_calculator'), 
-        #             'config', 
-        #             'config.yaml'
-        #         )
-        #     }]
-        # ),
-        # # Stop
-        # Node(
-        #     package='goal_calculator',
-        #     executable='stop_server',
-        #     name='stop_server',
-        # ),
-        # # Turn
-        # Node(
-        #     package='goal_calculator',
-        #     executable='right_turn',
-        #     name='right_turn'
-        # ),
-        # Node(
-        #     package='goal_calculator',
-        #     executable='left_turn',
-        #     name='left_turn'
-        # )
+        Node(
+            package='goal_calculator',
+            executable='lane_change_yellow',
+            name='lane_change_yellow',
+            output='screen',
+            parameters=[{
+                'config_file_path': os.path.join(
+                    get_package_share_directory('goal_calculator'), 
+                    'config', 
+                    'config.yaml'
+                )
+            }]
+        ),
+        # Stop
+        Node(
+            package='goal_calculator',
+            executable='stop_server',
+            name='stop_server',
+        ),
+        Node(
+            package='goal_calculator_cpp',
+            executable='find_intersection_action_server',
+            name='find_intersection_action_server',
+        ),
+        # Turn
+        Node(
+            package='goal_calculator',
+            executable='right_turn',
+            name='right_turn'
+        ),
+        Node(
+            package='goal_calculator',
+            executable='left_turn',
+            name='left_turn'
+        )
     ]
 
-
-    launch_detector = [
-        Node(
-            package='detective',
-            executable='drum_detector_node',
-            name='drum_detector_node'
-        ),
-        Node(
-            package='detective',
-            executable='pedestrian_detector_node',
-            name='pedestrian_detector_node'
-        ),
+    launch_detector_constant = [
         Node(
             package='detective',
             executable='stop_sign_detector_node',
@@ -373,6 +366,30 @@ def generate_launch_description():
             package='detective',
             executable='pothole_detector_node',
             name='pothole_detector_node'
+        )
+    ]
+
+    launch_detector_model = [
+        Node(
+            package='detective',
+            executable='drum_detector_node',
+            name='drum_detector_node'
+        ),
+        Node(
+            package='detective',
+            executable='pedestrian_detector_node',
+            name='pedestrian_detector_node'
+        )
+    ]
+
+    launch_detector_height = [
+        Node(
+            package='height_mapper',
+            executable='height_mask_publisher_node',
+            name='height_mask_publisher_node',
+            parameters=[{
+                'sim': SIM,
+            }]
         )
     ]
 
@@ -388,7 +405,10 @@ def generate_launch_description():
         Node(
             package='behaviour_manager',
             executable='behaviour_manager_node',
-            name='behaviour_manager_node'
+            name='behaviour_manager_node',
+            parameters=[{
+                'behaviour_code': BEHAVIOUR_CODE 
+            }]            
         )
     ]
 
@@ -441,26 +461,6 @@ def generate_launch_description():
         )
     ]
 
-    launch_height_mapper = [
-        Node(
-            package='height_mapper',
-            executable='height_mask_publisher_node',
-            name='height_mask_publisher_node',
-            parameters=[{
-                'sim': SIM,
-            }]
-        )
-    ]
-
-    # launch_odom_tf = [
-    #     Node(
-    #         package="transforms",
-    #         executable="odom_tf",
-    #         name = 'odom_transformer'
-    #     ),
-    # ]
-
-
     launch_description = list()
 
     if SIM:
@@ -475,8 +475,8 @@ def generate_launch_description():
         launch_description.extend(launch_sensors)
         # launch_description.extend(launch_odom_tf)
 
-    if MOVEMENT:
-        launch_description.extend(launch_motion_control)
+    launch_description.extend(launch_topic_remapper)
+    launch_description.extend(launch_pose_publishers)
 
     launch_description.extend(launch_lane_masker)
     launch_description.extend(launch_lane_mapper)
@@ -484,17 +484,17 @@ def generate_launch_description():
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
     
-    # launch_description.extend(launch_goal_calculators)
+    launch_description.extend(launch_detector_constant)
+    if DETECTION_MODE == 0:
+        launch_description.extend(launch_detector_model)
+    if DETECTION_MODE == 1:
+        launch_description.extend(launch_detector_height)
+
+    if ENABLE_GOALS:
+        launch_description.extend(launch_intersection_detector)    
+        launch_description.extend(launch_goal_calculators)
+        if ENABLE_BEHAVIOUR_MANAGER:
+            launch_description.extend(launch_behaviour_manager)
     
-    # launch_description.extend(launch_behaviour_manager)
-  
-    launch_description.extend(launch_intersection_detector)
-
-    # launch_description.extend(launch_detector)
-    launch_description.extend(launch_height_mapper)
-
-    launch_description.extend(launch_topic_remapper)
-
-    launch_description.extend(launch_pose_publishers)
 
     return LaunchDescription(launch_description)

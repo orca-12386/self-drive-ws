@@ -36,7 +36,7 @@ public:
 
     this->action_server_ = rclcpp_action::create_server<FindIntersection>(
       this,
-      "find_intersection",
+      "stop_intersection",
       std::bind(&FindIntersectionActionServer::handle_goal, this, _1, _2),
       std::bind(&FindIntersectionActionServer::handle_cancel, this, _1),
       std::bind(&FindIntersectionActionServer::handle_accepted, this, _1));
@@ -381,4 +381,10 @@ private:
   }
 };
 
-RCLCPP_COMPONENTS_REGISTER_NODE(FindIntersectionActionServer)
+int main(int argc, char** argv) {
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<FindIntersectionActionServer>();
+  rclcpp::spin(node);
+  rclcpp::shutdown();
+  return 0;
+}

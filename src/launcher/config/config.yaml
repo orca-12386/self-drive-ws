@@ -1,2 +1,11 @@
-sim: false
-movement: false
+sim: true
+
+detectors:
+  mode: 1 # 0 for YOLO, 1 for height (pothole and stop always use YOLO/RGB)
+
+goal_calculator:
+  enable: true # for goal calculators
+
+behaviour_manager: # for automated actions
+  enable: true
+  code: 0

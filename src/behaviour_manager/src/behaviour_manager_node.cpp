@@ -25,6 +25,9 @@
 #include <queue>
 #include <array>
 #include <map>
+#include <unordered_set>
+#include <functional>
+
 
 /*
 Detection
@@ -39,7 +42,6 @@ classify
 */
 
 bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& dst) {
-    std::vector<std::array<int, 2>> visited_vec;
     std::unordered_set<uint64_t> visited;
     auto hash_coords = [](const std::array<int, 2>& coords) {
         return (static_cast<uint64_t>(coords[0]) << 32) | static_cast<uint64_t>(coords[1]);
@@ -48,6 +50,7 @@ bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::Oc
     std::array<int, 2> p;
     std::array<std::array<int, 2>, 4> neighbours;
     q.push(src);
+    visited.insert(hash_coords(src));
     while(q.size()>0) {
         p = q.front();
         q.pop();
@@ -62,7 +65,6 @@ bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::Oc
         neighbours[1] = {p[0], p[1]+1};
         neighbours[2] = {p[0]-1, p[1]};
         neighbours[3] = {p[0], p[1]-1};
-        visited_vec.push_back(p);
         for(int i=0;i<4;i++) {
             if(neighbours[i][0] >= map->info.width || neighbours[i][0] < 0) {
                 continue;
@@ -90,7 +92,7 @@ double get_distance_bfs(const std::array<int, 2> src, const nav_msgs::msg::Occup
 
 double calculate_slope(std::array<int, 2> p1, std::array<int, 2> p2) {
     if (p2[0]-p1[0] == 0) {
-        return false;
+        return 1e9;
     } else {
         return (p2[1]-p1[1])/(p2[0]-p1[0]);
     }
@@ -214,7 +216,8 @@ public:
     DetectionSubscriber(rclcpp::Node* node, std::string topic, double distance_threshold, 
         std::function<bool(std::array<double, 3>&)> get_odometry_location_func, std::function<bool(double&)> get_odometry_yaw_func,
         std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_near_map_func,
-        std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_yellow_map_func        
+        std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_yellow_map_func, 
+        std::function<int()> get_mode_func      
     ) {
         // client_cb_group = node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         client_cb_group = nullptr;
@@ -253,7 +256,9 @@ public:
 
 private:
     void detectionCallback(geometry_msgs::msg::Point::SharedPtr msg) {
-        // RCLCPP_INFO(node->get_logger(), "Received detection");
+        if(get_mode_func() == 2) {
+            return;
+        }
         std::array<double, 3> odometry_location;
         double yaw;
         bool odometry_recv = get_odometry_location_func(odometry_location);
@@ -323,7 +328,6 @@ private:
         }
     }
     
-    
     void rotate_coords(std::array<double, 3>& p, double yaw) {
         double py = (p[1]*sin(yaw)) - (p[0]*cos(yaw)); 
         double px = (p[0]*sin(yaw)) + (p[1]*cos(yaw));
@@ -367,6 +371,7 @@ private:
     std::function<bool(double&)> get_odometry_yaw_func;
     std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_near_map_func;
     std::function<nav_msgs::msg::OccupancyGrid::SharedPtr()> get_yellow_map_func;
+    std::function<int()> get_mode_func;
     rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr sub;
     std::array<Detection*, 2> detections;
     rclcpp::Node* node;
@@ -479,7 +484,7 @@ public:
     void wait_for_result() {
         RCLCPP_INFO(node->get_logger(), (std::string("Waiting for service ") + std::string(service_topic)).c_str());
         result.wait();
-        RCLCPP_INFO(node->get_logger(), (std::string("Service call to ") + std::string(service_topic) + std::string("completed")).c_str());
+        RCLCPP_INFO(node->get_logger(), (std::string("Service call to ") + std::string(service_topic) + std::string(" completed")).c_str());
     }
 
     shared_future get_result() {
@@ -494,6 +499,444 @@ private:
     rclcpp::CallbackGroup::SharedPtr client_cb_group;
     shared_future result;
 };
+
+
+
+class Pattern {
+public:
+    int behaviour_code;
+    std::function<void(bool)> lane_follow_srv;
+    std::function<void(bool)> lane_interp_srv;
+    std::function<void()> stop_in_lane_action;
+    std::function<void()> stop_intersection_action;
+    std::function<void()> lane_change_action;
+    std::function<bool()> check_intersection;
+    std::function<void()> left_turn_action;
+    std::function<void()> right_turn_action;
+    std::function<void()> straight_turn_action;
+    std::function<int()> get_mode;
+    std::function<void(int)> wait;
+
+    Pattern(
+        int behaviour_code_arg,
+
+        std::function<void(bool)> lane_follow_srv_arg,
+        std::function<void(bool)> lane_interp_srv_arg,
+        std::function<void()> stop_in_lane_action_arg,
+        std::function<void()> stop_intersection_action_arg,
+        std::function<void()> lane_change_action_arg,
+        std::function<bool()> check_intersection_arg,
+        std::function<void()> left_turn_action_arg,
+        std::function<void()> right_turn_action_arg,
+        std::function<void()> straight_turn_action_arg,
+
+        std::function<int()> get_mode_arg,
+        std::function<void(int)> wait_arg
+    ) :
+    behaviour_code(behaviour_code_arg),
+    lane_follow_srv(lane_follow_srv_arg),
+    lane_interp_srv(lane_interp_srv_arg),
+    stop_in_lane_action(stop_in_lane_action_arg),
+    stop_intersection_action(stop_intersection_action_arg),
+    lane_change_action(lane_change_action_arg),
+    check_intersection(check_intersection_arg),
+    left_turn_action(left_turn_action_arg),
+    right_turn_action(right_turn_action_arg),
+    straight_turn_action(straight_turn_action_arg),
+    get_mode(get_mode_arg),
+    wait(wait_arg)
+    {
+        pattern_function_map = {
+            {0, std::bind(&Pattern::full_course, this)},
+            {1, std::bind(&Pattern::lane_keeping, this)},
+            {2, std::bind(&Pattern::left_turn, this)},
+            {3, std::bind(&Pattern::right_turn, this)},
+            {4, std::bind(&Pattern::pothole_detection, this)},
+            {5, std::bind(&Pattern::intersection_lane_keeping, this)},
+            {6, std::bind(&Pattern::intersection_left_turn, this)},
+            {7, std::bind(&Pattern::intersection_right_turn, this)},
+            {8, std::bind(&Pattern::unobstructed_static_pedestrian_in_lane_stop, this)},
+            {9, std::bind(&Pattern::obstructed_dynamic_pedestrian_in_lane_stop, this)},
+            {10, std::bind(&Pattern::static_pedestrian_lane_change, this)},
+            {11, std::bind(&Pattern::obstacle_detection_lane_change, this)},
+            {12, std::bind(&Pattern::curved_road_lane_keeping, this)},
+            {13, std::bind(&Pattern::curved_road_lane_changing, this)},
+            {14, std::bind(&Pattern::merging, this)},
+            {15, std::bind(&Pattern::parking_pull_in, this)},
+            {16, std::bind(&Pattern::parking_pull_out, this)},
+            {17, std::bind(&Pattern::parking_parallel, this)},
+        };
+
+        pattern_function = pattern_function_map.at(behaviour_code);
+    
+        done = false;
+        action_count = 0;
+        switch(behaviour_code) {
+            case 0:
+                turn_sequence = {1,0,2};
+                current_turn_index = 0;
+                detection_limits = {
+                    {"barrel", 5},
+                    {"stop_sign", 5},
+                    {"pedestrian", 5},
+                    {"tyre", 5},
+                    {"pothole", 5}
+                };
+                break;
+            case 1:
+                detection_limits = {
+                    {"barrel", 2},
+                };
+                break;
+            case 2:
+                detection_limits = {
+                    {"barrel", 2},
+                };
+                break;
+            case 3:
+                detection_limits = {
+                    {"barrel", 2},
+                };
+                break;
+            case 4:
+                detection_limits = {
+                    {"barrel", 2},
+                    {"pothole", 5},
+                };
+                break;
+            case 5:
+                detection_limits = {
+                    {"barrel", 5},
+                    {"stop_sign", 5}
+                };
+                break;
+            case 6:
+                detection_limits = {
+                    {"stop_sign", 5},
+                    {"barrel", 5},
+                };
+                break;
+            case 7:
+                detection_limits = {
+                    {"stop_sign", 5},
+                    {"barrel", 2},
+                };
+                break;
+            case 8:
+                detection_limits = {
+                    {"barrel", 2},
+                    {"pedestrian", 5}
+                };
+                break;
+            case 9:
+                detection_limits = {
+                    {"barrel", 2},
+                    {"pedestrian", 5}
+                };
+                break;
+            case 10:
+                detection_limits = {
+                    {"barrel", 2},
+                    {"pedestrian", 5}
+                };
+                break;
+            case 11:
+                detection_limits = {
+                    {"barrel", 2},
+                };
+                break;
+            case 12:
+                detection_limits = {
+                    {"barrel", 2},
+                };
+                break;
+            case 13:
+                detection_limits = {
+                    {"barrel", 2},
+                };
+                break;
+            case 14:
+                detection_limits = {};
+                break;
+            case 15:
+                detection_limits = {};
+                break;
+            
+            case 16:
+                detection_limits = {};
+                break;
+            
+            case 17:
+                detection_limits = {};
+                break;
+        }
+    }
+    
+    std::unordered_map<std::string, double> get_detection_limits() {
+        return detection_limits;
+    }
+
+    void execute_pattern(std::unordered_map<std::string, bool> is_detected, std::unordered_map<std::string, Detection*> detections) {
+        this->is_detected = is_detected;
+        this->detections = detections;
+        pattern_function();
+    }
+
+private:
+    bool done;
+    std::unordered_map<int, std::function<void()>> pattern_function_map;
+    std::function<void()> pattern_function;
+
+    std::unordered_map<std::string, bool> is_detected;
+    std::unordered_map<std::string, Detection*> detections;
+
+    std::unordered_map<std::string, double> detection_limits;
+
+    int current_turn_index;
+    std::vector<int> turn_sequence;
+
+    int action_count;
+
+
+    void log(std::string s) {
+        RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), s.c_str());
+    }
+
+    void lane_keeping() {
+        /*
+        Lane follow
+        See barrel and stops at 3 ft from barrel
+        Terminate
+        */
+        if (is_detected.at("barrel")) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void left_turn() {
+        if(!done) {
+            left_turn_action();
+            done = true;
+        }
+        if(is_detected.at("barrel")) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void right_turn() {
+        if(!done) {
+            right_turn_action();
+            done = true;
+        }
+        if(is_detected.at("barrel")) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void pothole_detection() {
+        /*
+        Lane follow
+        Sees pothole and lane changes
+        Terminate
+        */
+        if(is_detected.at("pothole") && action_count++ == 0) {
+            lane_change_action();
+            rclcpp::shutdown();
+        } else if(is_detected.at("barrel") && action_count++ == 1) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void intersection_lane_keeping() {
+        if(is_detected.at("stop_sign") && action_count++ == 0) {
+            stop_intersection_action();
+            if(check_intersection()) {
+                straight_turn_action();
+            }
+        } else if(is_detected.at("barrel") && action_count++ == 1) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }   
+    }
+
+    void intersection_left_turn() {
+        if(is_detected.at("stop_sign") && action_count++ == 0) {
+            stop_intersection_action();
+            if(check_intersection()) {
+                left_turn_action();
+            }
+        } else if(is_detected.at("barrel") && action_count++ == 1) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void intersection_right_turn() {
+        if(is_detected.at("stop_sign") && action_count++ == 0) {
+            stop_intersection_action();
+            if(check_intersection()) {
+                right_turn_action();
+            }
+        } else if(is_detected.at("barrel") && action_count++ == 1) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }   
+    }
+
+    void unobstructed_static_pedestrian_in_lane_stop() {
+        if(is_detected.at("pedestrian")) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void obstructed_dynamic_pedestrian_in_lane_stop() {
+        if(is_detected.at("pedestrian") && action_count++ == 0) {
+            stop_in_lane_action();
+            wait(30);
+        } else if(is_detected.at("barrel") && action_count++ == 1) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void static_pedestrian_lane_change() {
+        if(is_detected.at("pedestrian") && action_count++ == 0) {
+            lane_change_action();
+        } else if(is_detected.at("barrel") && action_count++ == 1) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void obstacle_detection_lane_change() {
+        if(is_detected.at("barrel") && action_count++ == 0) {
+            lane_change_action();
+        } else if(is_detected.at("barrel") && action_count++ == 1) {
+            stop_in_lane_action();
+            rclcpp::shutdown();
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+
+    void curved_road_lane_keeping() {
+        lane_keeping();
+    }
+
+    void curved_road_lane_changing() {
+        obstacle_detection_lane_change();
+    }
+
+    void merging() {
+
+    }
+
+    void parking_pull_in() {
+
+    }
+
+    void parking_pull_out() {
+
+    }
+
+    void parking_parallel() {
+
+    }
+
+    void full_course() {
+        if(is_detected.at("stop_sign")) {
+            log("Stop sign detected");
+            if(detections["stop_sign"]->edge) {
+                log("Stop sign detected at edge");
+                lane_follow_srv(false);
+                stop_in_lane_action();
+                if(check_intersection()) {
+                    switch(turn_sequence[current_turn_index]) {
+                        case 0:
+                            straight_turn_action();
+                            break;
+                        case 1:
+                            right_turn_action();
+                            break;
+                        case 2:
+                            left_turn_action();
+                            break;
+                    }
+                    if (current_turn_index < turn_sequence.size()-1) {
+                        current_turn_index++;
+                    }
+                }    
+            }
+        } else if(is_detected.at("tyre")) {
+            if(detections["tyre"]->current) {
+                log("Tyre detected");
+                lane_follow_srv(false);
+                lane_change_action();    
+            }
+        } else if(is_detected.at("barrel")) {
+            if(detections["barrel"]->current) {
+                log("Traffic drum detected in current lane");
+                lane_follow_srv(false);
+                lane_change_action();    
+            } else if(detections["barrel"]->edge) {
+                log("Traffic drum detected at edge");
+            }
+        } else {
+            if(get_mode() == 0) {
+                lane_follow_srv(true);
+            }
+        }
+    }
+};
+
+
 
 class BehaviourManagerNode : public rclcpp::Node
 {
@@ -516,6 +959,27 @@ public:
 
 private:
     void initialise_data() {
+        this->declare_parameter<int>("behaviour_code", 0); 
+
+        int behaviour_code = this->get_parameter("behaviour_code").as_int();
+
+        pattern = new Pattern(
+            behaviour_code,
+
+            std::bind(&BehaviourManagerNode::lane_follow_srv, this, std::placeholders::_1),
+            std::bind(&BehaviourManagerNode::lane_interp_srv, this, std::placeholders::_1),
+            std::bind(&BehaviourManagerNode::stop_in_lane_action, this),
+            std::bind(&BehaviourManagerNode::stop_intersection_action, this),
+            std::bind(&BehaviourManagerNode::lane_change_action, this),
+            std::bind(&BehaviourManagerNode::check_intersection, this),
+            std::bind(&BehaviourManagerNode::left_turn_action, this),
+            std::bind(&BehaviourManagerNode::right_turn_action, this),
+            std::bind(&BehaviourManagerNode::straight_turn_action, this),
+
+            std::bind(&BehaviourManagerNode::get_mode, this),
+            std::bind(&BehaviourManagerNode::wait, this, std::placeholders::_1)
+        );
+
         // Detector subscriptions
         near_map_sub = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "/map/white/local/near", 10, std::bind(&BehaviourManagerNode::nearMapCallback, this, std::placeholders::_1));
@@ -528,14 +992,14 @@ private:
             std::bind(&BehaviourManagerNode::odomCallback, this, std::placeholders::_1));
         
         detection_topics = {
-            {"traffic_drum", "/detector/traffic_drum/coordinates"},
+            {"barrel", "/detector/barrel/coordinates"},
             {"stop_sign", "/detector/stop_sign/coordinates"},
             {"pedestrian", "/detector/pedestrian/coordinates"},
             {"tyre", "/detector/tyre/coordinates"}
         };
 
         detection_distance_limits = {
-            {"traffic_drum", 5},
+            {"barrel", 5},
             {"stop_sign", 3},
             {"pedestrian", 5},
             {"tyre", 5}
@@ -543,21 +1007,24 @@ private:
 
         // Actions: Lane change, left turn, right turn
         this->lane_change_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "lane_change");
-        this->stop_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopAction");
+        this->stop_in_lane_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StopAction");
+        this->stop_intersection_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "stop_intersection");
+
         this->left_turn_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "LeftTurn");
         this->right_turn_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "RightTurn");
         this->straight_turn_action_client = std::make_unique<GoalActionClient<interfaces::action::GoalAction>>(this, "StraightTurn");
 
         // Services: Start/stop lane follow, change planner topic
         this->change_planner_topic_srv_client = std::make_unique<ServiceClient<topic_remapper::srv::ChangeTopic>>(this, "/topic_remapper/motion_control");
-        this->lane_follow_toggle_srv_client = std::make_unique<ServiceClient<interfaces::srv::LaneFollowToggle>>(this, "toggle_lane_follow");
-        this->detect_intersection_srv_client = std::make_unique<ServiceClient<intersection_detector::srv::DetectIntersection>>(this, "/detection/intersection");
+        this->lane_follow_srv_client = std::make_unique<ServiceClient<interfaces::srv::LaneFollowToggle>>(this, "toggle_lane_follow");
+        this->check_intersection_srv_client = std::make_unique<ServiceClient<intersection_detector::srv::DetectIntersection>>(this, "/detection/intersection");
         this->lane_interpolation_toggle_srv_client = std::make_unique<ServiceClient<example_interfaces::srv::SetBool>>(this, "toggle_lane_interpolation");
 
-        lane_follow_toggle_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
+        lane_follow_srv_request = std::make_shared<interfaces::srv::LaneFollowToggle::Request>();
         change_planner_topic_request = std::make_shared<topic_remapper::srv::ChangeTopic::Request>();
-        detect_intersection_request = std::make_shared<intersection_detector::srv::DetectIntersection::Request>();
+        check_intersection_request = std::make_shared<intersection_detector::srv::DetectIntersection::Request>();
         lane_interpolation_toggle_request = std::make_shared<example_interfaces::srv::SetBool::Request>();
+        clear_intersection_srv_request = std::make_shared<example_interfaces::srv::SetBool::Request>();
 
         near_map_recv = false;
         yellow_map_recv = false;
@@ -572,21 +1039,18 @@ private:
                 std::bind(&BehaviourManagerNode::get_odometry_location, this, std::placeholders::_1), 
                 std::bind(&BehaviourManagerNode::get_odometry_yaw, this, std::placeholders::_1),
                 std::bind(&BehaviourManagerNode::get_near_map, this),
-                std::bind(&BehaviourManagerNode::get_yellow_map, this)
+                std::bind(&BehaviourManagerNode::get_yellow_map, this),
+                std::bind(&BehaviourManagerNode::get_mode, this)
             );
         }
 
         /*
+        Mode
         mode 0 : neither 
         mode 1 : lane following
-        mode 2 : acting
+        mode 2 : action
         */
         mode = 0;
-        // straight: 0
-        // left: 2
-        // right: 1
-        turn_sequence = {1,0,2};
-        current_turn_index = 0;
     }
 
     bool get_odometry_location(std::array<double, 3>& out) {
@@ -601,6 +1065,10 @@ private:
     bool get_odometry_yaw(double& out) {
         out = odometry_yaw;
         return odometry_recv;
+    }
+
+    int get_mode() {
+        return mode;
     }
 
     nav_msgs::msg::OccupancyGrid::SharedPtr get_near_map() {
@@ -647,7 +1115,18 @@ private:
     }
 
 
-    void lane_interp_toggle(bool toggle) {
+    void wait(int secs) {
+        std::this_thread::sleep_for(std::chrono::seconds(secs));
+    }
+
+    void change_motion_control_map(std::string s) {
+        change_planner_topic_request->new_topic = s;
+        change_planner_topic_srv_client->call(change_planner_topic_request);
+        change_planner_topic_srv_client->wait_for_result();
+        log(std::string("Changed planner map to ")+s);
+    }
+
+    void lane_interp_srv(bool toggle) {
         lane_interpolation_toggle_request->data = toggle;            
         lane_interpolation_toggle_srv_client->call(lane_interpolation_toggle_request);
         lane_interpolation_toggle_srv_client->wait_for_result();
@@ -658,100 +1137,118 @@ private:
         }    
     }
 
-    void lane_follow_toggle(bool toggle) {
+    void clear_intersection_srv(bool toggle) {
+        clear_intersection_srv_request->data = toggle;
+        clear_intersection_srv_client->call(clear_intersection_srv_request);
+        clear_intersection_srv_client->wait_for_result();
+        if(toggle) {
+            log("Started intersection clearing");
+        } else {
+            log("Stopped intersection clearing");
+        }
+    }
+
+    void lane_follow_srv(bool toggle) {
         if (toggle) {
             mode = 1;
         } else {
             mode = 0;
         }
-        lane_follow_toggle_request->toggle = toggle;            
-        lane_follow_toggle_srv_client->call(lane_follow_toggle_request);
-        lane_follow_toggle_srv_client->wait_for_result();
+        lane_follow_srv_request->toggle = toggle;            
+        lane_follow_srv_client->call(lane_follow_srv_request);
+        lane_follow_srv_client->wait_for_result();
         if(toggle) {
             log("Started lane follow");
         } else {
             log("Stopped lane follow");
         }
-        lane_interp_toggle(toggle);
+        lane_interp_srv(toggle);
     }
 
-    void change_motion_control_map(std::string s) {
-        change_planner_topic_request->new_topic = s;
-        change_planner_topic_srv_client->call(change_planner_topic_request);
-        change_planner_topic_srv_client->wait_for_result();
-        log(std::string("Changed planner map to ")+s);
-    }
-
-    void lane_change() {
+    void stop_in_lane_action() {
+        lane_follow_srv(false);
         mode = 2;
-        // change planner map to white
+        auto send_goal_options = create_send_goal_options();
+        auto goal_msg = create_goal_message(1);
+        stop_in_lane_action_client->send_goal(goal_msg, send_goal_options);
+        stop_in_lane_action_client->wait_for_result();
+        mode = 0;
+    }
+
+    void stop_intersection_action() {
+        lane_follow_srv(false);
+        mode = 2;
+        auto send_goal_options = create_send_goal_options();
+        auto goal_msg = create_goal_message(1);
+        stop_intersection_action_client->send_goal(goal_msg, send_goal_options);
+        stop_intersection_action_client->wait_for_result();
+        mode = 0;
+    }
+
+    void lane_change_action() {
+        lane_follow_srv(false);
+        mode = 2;
         change_motion_control_map("/map/white/local");
-        //lane change
         log("Changing lanes");
         auto send_goal_options = create_send_goal_options();
         auto goal_msg = create_goal_message(1);
         lane_change_action_client->send_goal(goal_msg, send_goal_options);
         lane_change_action_client->wait_for_result();
         log("Changed lanes");
-        // change planner map back
         change_motion_control_map("/map/current");
         mode = 0;
     }
 
-    void stop_movement() {
-        mode = 2;
-        auto send_goal_options = create_send_goal_options();
-        auto goal_msg = create_goal_message(1);
-        stop_action_client->send_goal(goal_msg, send_goal_options);
-        stop_action_client->wait_for_result();
-        mode = 0;
-    }
-
-    bool detect_intersection() {
-        detect_intersection_srv_client->call(detect_intersection_request);
-        detect_intersection_srv_client->wait_for_result();
-        auto result = detect_intersection_srv_client->get_result();
+    bool check_intersection() {
+        check_intersection_srv_client->call(check_intersection_request);
+        check_intersection_srv_client->wait_for_result();
+        auto result = check_intersection_srv_client->get_result();
         bool detected = result.get()->is_intersection;
         return detected;
     }
 
-    void left_turn() {
+    void turn_action(int turn) {
+        lane_follow_srv(false);
         mode = 2;
+        clear_intersection_srv(true);
         change_motion_control_map("/map");
-        log("Turning left");
         auto send_goal_options = create_send_goal_options();
         auto goal_msg = create_goal_message(1);
-        left_turn_action_client->send_goal(goal_msg, send_goal_options);
-        left_turn_action_client->wait_for_result();
-        log("Turned left");
+        switch(turn) {
+            case 0:
+                log("Turning straight");
+                straight_turn_action_client->send_goal(goal_msg, send_goal_options);
+                straight_turn_action_client->wait_for_result();
+                log("Turned straight");              
+                break;
+            case 1:
+                log("Turning right");
+                right_turn_action_client->send_goal(goal_msg, send_goal_options);
+                right_turn_action_client->wait_for_result();
+                log("Turned right");
+                break;
+            case 2:
+                log("Turning left");
+                left_turn_action_client->send_goal(goal_msg, send_goal_options);
+                left_turn_action_client->wait_for_result();
+                log("Turned left");
+                break;
+        }
+        clear_intersection_srv(false);
         change_motion_control_map("/map/current");
         mode = 0;
     }
 
-    void right_turn() {
-        mode = 2;
-        change_motion_control_map("/map");
-        log("Turning right");
-        auto send_goal_options = create_send_goal_options();
-        auto goal_msg = create_goal_message(1);
-        right_turn_action_client->send_goal(goal_msg, send_goal_options);
-        right_turn_action_client->wait_for_result();
-        log("Turned right");
-        change_motion_control_map("/map/current");
-        mode = 0;
+    void left_turn_action() {
+        turn_action(2);
     }
 
-    void straight_turn() {
-        mode = 2;
-        change_motion_control_map("/map");
-        log("Turning straight");
-        auto send_goal_options = create_send_goal_options();
-        auto goal_msg = create_goal_message(1);
-        straight_turn_action_client->send_goal(goal_msg, send_goal_options);
-        straight_turn_action_client->wait_for_result();
-        log("Turned straight");
-        change_motion_control_map("/map/current");
-        mode = 0;
+    void right_turn_action() {
+        turn_action(1);
+    }
+
+    void straight_turn_action() {
+        turn_action(0);
     }
 
     void process_detections() {
@@ -766,79 +1263,7 @@ private:
                 detections[topic.first] = det;                
             }
         }
-        
-        if(is_detected.at("stop_sign")) {
-            log("Stop sign detected");
-            if(detections["stop_sign"]->edge) {
-                log("Stop sign detected at edge");
-                // stop following
-                lane_follow_toggle(false);
-                // stop
-                stop_movement();
-                if(detect_intersection()) {
-                    switch(turn_sequence[current_turn_index]) {
-                        case 0:
-                            straight_turn();
-                            break;
-                        case 1:
-                            right_turn();
-                            break;
-                        case 2:
-                            left_turn();
-                            break;
-                    }
-                    if (current_turn_index < turn_sequence.size()-1) {
-                        current_turn_index++;
-                    }
-                }    
-            }
-        } else if(is_detected.at("tyre")) {
-            if(detections["tyre"]->current) {
-                log("Tyre detected");
-                // stop following
-                lane_follow_toggle(false);
-                // change planner map
-                lane_change();    
-            }
-        } else if(is_detected.at("traffic_drum")) {
-            if(detections["traffic_drum"]->current) {
-                log("Traffic drum detected in current lane");
-                // stop following
-                lane_follow_toggle(false);
-                // lane change
-                lane_change();    
-            } else if(detections["traffic_drum"]->edge) {
-                log("Traffic drum detected at edge");
-            }
-        } else {
-            // lane follow
-            if(mode == 0) {
-                lane_follow_toggle(true);
-            }
-        }        
-/*     
-if(stop)
-automatic: stop keeping, set goal to current position. Wait for cmd vel to become 0 and then continue execution 
-manual: stop
-If(tyre)
-lane change
-if(same lane barrel)
-automatic: lane change 
-manual: stop
-if(same lane pedestrian)
-if(adjacent lane barrel)
-stop and wait for 2s then continue
-else 
-lane change
-if(left turn)
-turn left
-if(right turn)
-turn right
-if(parking)
-parking
-else
-keep
-*/
+        pattern->execute_pattern(is_detected, detections);
     }
 
     void timer_callback() {
@@ -874,17 +1299,18 @@ keep
     std::array<double, 3> odometry_location_arr;
     double odometry_yaw;
 
-    std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_action_client, left_turn_action_client, right_turn_action_client, straight_turn_action_client;
+    std::unique_ptr<GoalActionClient<interfaces::action::GoalAction>> lane_change_action_client, stop_intersection_action_client, stop_in_lane_action_client, left_turn_action_client, right_turn_action_client, straight_turn_action_client;
 
-    std::unique_ptr<ServiceClient<interfaces::srv::LaneFollowToggle>> lane_follow_toggle_srv_client;
+    std::unique_ptr<ServiceClient<interfaces::srv::LaneFollowToggle>> lane_follow_srv_client;
     std::unique_ptr<ServiceClient<topic_remapper::srv::ChangeTopic>> change_planner_topic_srv_client;
-    std::unique_ptr<ServiceClient<intersection_detector::srv::DetectIntersection>> detect_intersection_srv_client;
-    std::unique_ptr<ServiceClient<example_interfaces::srv::SetBool>> lane_interpolation_toggle_srv_client;
+    std::unique_ptr<ServiceClient<intersection_detector::srv::DetectIntersection>> check_intersection_srv_client;
+    std::unique_ptr<ServiceClient<example_interfaces::srv::SetBool>> lane_interpolation_toggle_srv_client, clear_intersection_srv_client;
 
-    std::shared_ptr<interfaces::srv::LaneFollowToggle::Request> lane_follow_toggle_request;
+    std::shared_ptr<interfaces::srv::LaneFollowToggle::Request> lane_follow_srv_request;
     std::shared_ptr<topic_remapper::srv::ChangeTopic::Request> change_planner_topic_request;
-    std::shared_ptr<intersection_detector::srv::DetectIntersection::Request> detect_intersection_request;
+    std::shared_ptr<intersection_detector::srv::DetectIntersection::Request> check_intersection_request;
     std::shared_ptr<example_interfaces::srv::SetBool::Request> lane_interpolation_toggle_request;
+    std::shared_ptr<example_interfaces::srv::SetBool::Request> clear_intersection_srv_request;
 
     rclcpp::CallbackGroup::SharedPtr timer_cb_group;
 
@@ -892,6 +1318,8 @@ keep
     
     int current_turn_index;
     std::array<int, 3> turn_sequence;
+
+    Pattern* pattern;
 };
 
 
@@ -905,44 +1333,3 @@ int main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
-
-    // bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& dst) {
-    //     std::vector<std::array<int, 2>> visited_vec;
-    //     std::unordered_set<uint64_t> visited;
-    //     auto hash_coords = [](const std::array<int, 2>& coords) {
-    //         return (static_cast<uint64_t>(coords[0]) << 32) | static_cast<uint64_t>(coords[1]);
-    //     };
-    //     std::queue<std::array<int, 2>> q;
-    //     std::array<int, 2> p;
-    //     std::array<std::array<int, 2>, 4> neighbours;
-    //     q.push(src);
-    //     while(q.size()>0) {
-    //         p = q.front();
-    //         q.pop();
-    //         if(map->data[p[1]*map->info.width + p[0]] > 0) {
-    //             dst = p;
-    //             return true;
-    //         }
-    //         if(sqrt(pow(p[0]-src[0],2) + pow(p[1]-src[1],2)) > 60) {
-    //             return false;
-    //         }
-    //         neighbours[0] = {p[0]+1, p[1]};
-    //         neighbours[1] = {p[0], p[1]+1};
-    //         neighbours[2] = {p[0]-1, p[1]};
-    //         neighbours[3] = {p[0], p[1]-1};
-    //         visited_vec.push_back(p);
-    //         for(int i=0;i<4;i++) {
-    //             if(neighbours[i][0] >= map->info.width || neighbours[i][0] < 0) {
-    //                 continue;
-    //             }
-    //             if(neighbours[i][1] >= map->info.height || neighbours[i][1] < 0) {
-    //                 continue;
-    //             }
-    //             if(visited.find(hash_coords(neighbours[i])) == visited.end()) {
-    //                 q.push(neighbours[i]);
-    //                 visited.insert(hash_coords(neighbours[i]));
-    //             }
-    //         }
-    //     }
-    //     return false;
-    // }

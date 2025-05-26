@@ -29,46 +29,6 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(interfaces REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
-
-add_library(find_intersection_action_server SHARED
-  src/find_intersection_action_server.cpp
-)
-
-target_include_directories(find_intersection_action_server PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-
-target_compile_definitions(find_intersection_action_server
-  PRIVATE "MAP_REVISER_BUILDING_DLL"
-)
-
-ament_target_dependencies(find_intersection_action_server
-  "rclcpp"
-  "rclcpp_action"
-  "rclcpp_components"
-  "nav_msgs"
-  "tf2"
-  "tf2_ros"
-  "geometry_msgs"
-  "interfaces"
-)
-
-
-rclcpp_components_register_node(find_intersection_action_server
-  PLUGIN "FindIntersectionActionServer"
-  EXECUTABLE find_intersection_action_server_node
-)
-
-# Install
-install(TARGETS
-  find_intersection_action_server
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
-
-
 add_executable(intersection_clearing_service src/intersection_clearer.cpp)
 
 ament_target_dependencies(intersection_clearing_service

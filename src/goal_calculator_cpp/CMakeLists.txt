@@ -23,6 +23,7 @@ find_package(cv_bridge REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(interfaces REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(interfaces REQUIRED)
 
 # Create the executable
 add_executable(lane_follower_node src/lane_follow.cpp)
@@ -39,18 +40,11 @@ ament_target_dependencies(lane_follower_node
   interfaces
 )
 
-add_library(find_intersection_action_server SHARED
-  src/find_intersection_action_server.cpp
-)
+add_executable(find_intersection_action_server src/find_intersection_action_server.cpp)
 
-target_include_directories(find_intersection_action_server PUBLIC
+target_include_directories(find_intersection_action_server PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-
-target_compile_definitions(find_intersection_action_server
-  PRIVATE "GOAL_CALCULATOR_BUILDING_DLL"
-)
+  $<INSTALL_INTERFACE:include>)
 
 ament_target_dependencies(find_intersection_action_server
   "rclcpp"
@@ -63,17 +57,10 @@ ament_target_dependencies(find_intersection_action_server
   "interfaces"
 )
 
-install(TARGETS
-  find_intersection_action_server
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
-
-
 # Install the executable
 install(TARGETS
   lane_follower_node
+  find_intersection_action_server
   DESTINATION lib/${PROJECT_NAME}
 )
 
