@@ -194,7 +194,7 @@ private:
 
     if(first_white_mp.x == -1 && first_white_mp.y == -1) {
       RCLCPP_INFO(this->get_logger(), "Could not find intersection");
-      return;
+      return geometry_msgs::msg::PoseStamped();
     }
 
     WorldPose first_white_wp =
@@ -205,27 +205,8 @@ private:
     double goal_x = first_white_wp.x - 0.3 * cos(goal_theta);
     double goal_y = first_white_wp.y - 0.3 * sin(goal_theta);
 
-    double PI    = 3.141592653589793;
-    double twoPI = 2 * PI;
+    // add offset here
 
-    while (goal_theta < 0)
-      goal_theta += twoPI;
-    while (goal_theta >= twoPI)
-      goal_theta -= twoPI;
-
-    if (goal_theta >= 0 && goal_theta < PI / 4 || goal_theta > 7 * PI / 4) {
-      goal_theta = 0;
-    } else if (goal_theta >= PI / 4 && goal_theta < 3 * PI / 4) {
-      goal_theta = PI / 2;
-    } else if (goal_theta >= 3 * PI / 4 && goal_theta < 5 * PI / 4) {
-      goal_theta = PI;
-    } else {
-      goal_theta = 3 * PI / 2;
-    }
-
-    goal_x = first_white_wp.x + 1 * cos(goal_theta - 1.57);
-    goal_y = first_white_wp.y + 1 * sin(goal_theta - 1.57);
-    
     geometry_msgs::msg::PoseStamped goal;
     goal.header.frame_id = "map";
     goal.header.stamp = this->now();

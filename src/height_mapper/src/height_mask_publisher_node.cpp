@@ -132,21 +132,30 @@ public:
         RCLCPP_INFO(this->get_logger(), "height_mask_publisher_node started");
         this->declare_parameter("sim", rclcpp::PARAMETER_BOOL);
         sim = this->get_parameter("sim").as_bool();
+
+        this->declare_parameter("depth_sub_topic", rclcpp::PARAMETER_STRING);
+        std::string depth_sub_topic = this->get_parameter("depth_sub_topic").as_string();
+    
+        this->declare_parameter("color_sub_topic", rclcpp::PARAMETER_STRING);
+        std::string color_sub_topic = this->get_parameter("color_sub_topic").as_string();
+
+        this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
+        std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
         
         object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
         object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.6f, 1.2f));
         object_types.push_back(ObjectType("stop_sign", "stop_sign", 1.8f, 2.2f));
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/image_raw", 10, 
+            color_sub_topic, 10, 
             std::bind(&HeightMaskPublisherNode::rgbImageCallback, this, std::placeholders::_1));
     
         depth_sub = this->create_subscription<sensor_msgs::msg::Image>(
-            "/zed_node/stereocamera/depth/image_raw", 10, 
+            depth_sub_topic, 10, 
             std::bind(&HeightMaskPublisherNode::depthImageCallback, this, std::placeholders::_1));
 
         camera_info_sub = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/zed_node/stereocamera/camera_info", 10, 
+            camera_info_sub_topic, 10, 
             std::bind(&HeightMaskPublisherNode::cameraInfoCallback, this, std::placeholders::_1));
     
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
