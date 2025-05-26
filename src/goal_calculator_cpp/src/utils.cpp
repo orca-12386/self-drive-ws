@@ -120,7 +120,7 @@ public:
     return MapPose(-1, -1);
   }
 
-  static MapPose exploreLane(const MapPose &start, const Map &map) {
+  static MapPose exploreLane(const MapPose &start, const Map &map, int max_distance = -1) {
     const int dx[] = {0, 1, 0, -1, 1, -1, 1, -1};
     const int dy[] = {-1, 0, 1, 0, -1, 1, 1, -1};
 
@@ -140,7 +140,11 @@ public:
 
       last_cell = current;
 
-      for (int i = 0; i < 4; i++) {
+      if (max_distance >= 0 && Utils::mapDistance(current, start) > max_distance) {
+        continue;
+      }
+
+      for (int i = 0; i < 8; i++) {
         int nx = current.x + dx[i];
         int ny = current.y + dy[i];
         MapPose neighbor(nx, ny);

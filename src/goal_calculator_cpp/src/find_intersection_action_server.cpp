@@ -193,19 +193,18 @@ private:
     );
 
     if(first_white_mp.x == -1 && first_white_mp.y == -1) {
-      RCLCPP_INFO(this->get_logger(), "Could not find intersection");
       return geometry_msgs::msg::PoseStamped();
     }
 
-    WorldPose first_white_wp =
-        Utils::getWorldPoseFromMapPose(first_white_mp, current_map_white);
+    MapPose white_mp = Utils::exploreLane(first_white_mp, current_map_white, 40);
 
-    double goal_theta = Utils::getAngleRadians(current_pose.world_pose, first_white_wp);
+    WorldPose white_wp =
+        Utils::getWorldPoseFromMapPose(white_mp, current_map_white);
 
-    double goal_x = first_white_wp.x - 0.3 * cos(goal_theta);
-    double goal_y = first_white_wp.y - 0.3 * sin(goal_theta);
+    double goal_theta = Utils::getAngleRadians(current_pose.world_pose, white_wp);
 
-    // add offset here
+    double goal_x = white_wp.x - 0.3 * cos(goal_theta);
+    double goal_y = white_wp.y - 0.3 * sin(goal_theta);
 
     geometry_msgs::msg::PoseStamped goal;
     goal.header.frame_id = "map";
