@@ -37,7 +37,7 @@ public:
             "/start_clearing_marker", 10);
 
         service = this->create_service<example_interfaces::srv::SetBool>(
-            "/toggle_mode", std::bind(&MapToggleService::handleToggleRequest, this, _1, _2));
+            "clear_intersection", std::bind(&MapToggleService::handleToggleRequest, this, _1, _2));
 
         timer = this->create_wall_timer(
             std::chrono::milliseconds(100),

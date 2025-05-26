@@ -59,7 +59,7 @@ public:
       std::bind(&FindIntersectionActionServer::odom_callback, this, _1));
 
     // Create publisher for the goal
-    goal_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("goal", 10);
+    goal_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("goal_pose", 10);
 
     RCLCPP_INFO(this->get_logger(), "Find Intersection Action Server has been initialized");
   }
@@ -191,6 +191,11 @@ private:
     MapPose first_white_mp = Utils::findClosestForValue(
         farthest_yellow_mp, current_map_white, 100, 100
     );
+
+    if(first_white_mp.x == -1 && first_white_mp.y == -1) {
+      RCLCPP_INFO(this->get_logger(), "Could not find intersection");
+      return;
+    }
 
     WorldPose first_white_wp =
         Utils::getWorldPoseFromMapPose(first_white_mp, current_map_white);

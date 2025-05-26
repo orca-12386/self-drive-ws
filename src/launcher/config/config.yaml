@@ -8,4 +8,4 @@ goal_calculator:
 
 behaviour_manager: # for automated actions
   enable: true
-  code: 0
+  code: 7

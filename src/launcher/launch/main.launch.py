@@ -389,6 +389,9 @@ def generate_launch_description():
             name='height_mask_publisher_node',
             parameters=[{
                 'sim': SIM,
+                'depth_sub_topic': depth_sub_topic,
+                'color_sub_topic': color_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
             }]
         )
     ]
