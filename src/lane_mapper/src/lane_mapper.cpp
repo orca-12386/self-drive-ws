@@ -184,9 +184,6 @@ public:
         full_map_msg->info.origin.position.y = grid_origin_y;
         full_map_msg->info.origin.position.z = 0.0;
         full_map_msg->info.origin.orientation.w = 1.0;
-
-        // timer = this->create_wall_timer(
-        //     std::chrono::milliseconds(50), std::bind(&LaneMapperNode::timer_callback, this));
         
     };
 
@@ -316,9 +313,9 @@ private:
         antipoints.clear();
         cv::Mat complement_mask_image;
         cv::bitwise_not(mask_image, complement_mask_image);
-        cv::findNonZero(complement_mask_image, locations); // Get all nonzero pixel locations
+        cv::findNonZero(complement_mask_image, locations);
         for (const auto& pt : locations) {
-            double d = static_cast<double>(depth_image.at<float>(pt.y, pt.x)); // Access color pixel
+            double d = static_cast<double>(depth_image.at<float>(pt.y, pt.x));
             Point p = convert_depth_to_point(pt, d, camera_info);
             if(p.y < y_threshold && p.z<z_threshold) {
                 antipoints.push_back(p);
@@ -337,9 +334,6 @@ private:
         odom.z = odometry_msg->pose.pose.position.y;
         convert_to_grid_coords(odom, grid_origin_x, grid_origin_y);
         get_global_grid_coords(odom, 0, 0);
-        // instant_map_msg->data[odom.global_grid_x+(grid_width*odom.global_grid_y)] = 100;
-
-        //log_debug("Converted odom to grid coords");
 
         tf2::Quaternion q(
             odometry_msg->pose.pose.orientation.x,
@@ -349,51 +343,18 @@ private:
         double roll, pitch, yaw;
         tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
 
-        //log_debug("Calculated yaw");
         log_debug(t5.log());
 
         Timer t6 = Timer("grid conversion");
         
         std::fill(instant_map_msg->data.begin(), instant_map_msg->data.end(), 0);
 
-        //log_debug("Created map message");
-        // log_debug("x");
-
-        // int min_grid_x = grid_width, max_grid_x = 0;
-        // int min_grid_y = grid_height, max_grid_y = 0;
-
-        // std::unordered_set<size_t> visited_indexes;
-
         for (auto it = begin (points); it != end (points); ++it) {
-            // log_debug("y");
-            //log_debug(std::string("iterator:")+std::to_string(it->x)+std::string(",")+std::to_string(it->y));
             convert_to_grid_coords(*it, 0, 0);
-            // log_debug("a");
             rotate_local_grid(*it, yaw);
-            // log_debug("b");
             get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
-            // log_debug("c");
-            // log_debug(std::to_string(it->global_grid_x) + std::string(",") + std::to_string(it->global_grid_y));
-            // log_debug(std::to_string((it->global_grid_y*grid_width)+it->global_grid_x));
             if(it->global_grid_y < grid_height && it->global_grid_y >= 0 && it->global_grid_x >= 0 && it->global_grid_x < grid_width) {
-                // if(it->global_grid_x < min_grid_x) {
-                //     min_grid_x = it->global_grid_x;
-                // }
-                // if(it->global_grid_x > max_grid_x) {
-                //     max_grid_x = it->global_grid_x;
-                // }
-                // if(it->global_grid_y < min_grid_y) {
-                //     min_grid_y = it->global_grid_y;
-                // }
-                // if(it->global_grid_y > max_grid_y) {
-                //     max_grid_y = it->global_grid_y;
-                // }
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
-                // if(visited_indexes.find(index) == visited_indexes.end()) {
-                //     // not in set
-                //     visited_indexes.insert(index);
-                //     log_odds_map[index] -= log_odds_miss;
-                // }
                 instant_map_msg->data[index] = 100;
                 log_odds_map[index] += log_odds_hit;
                 if(abs(log_odds_map[index]) > log_odds_clamp) {
@@ -407,33 +368,12 @@ private:
                     full_map_msg->data[index] = 0;
                 }    
             } else {
-                log("Assignment exceeds map dimensions");
+                relocate();
+                return;
             }
-            // log_debug("d");
         }
 
         log_debug(t6.log());
-
-        // Timer t8 = Timer("ground");
-
-        // std::vector<Point> polygon_corners;
-        
-        // Point p1 = convert_depth_to_point(cv::Point(0, 0), static_cast<double>(depth_image.at<float>(0, 0)), camera_info);    
-        // polygon_corners.push_back(p1);
-        // Point p2 = convert_depth_to_point(cv::Point(depth_image.cols-1, 0), static_cast<double>(depth_image.at<float>(0, depth_image.cols-1)), camera_info);
-        // polygon_corners.push_back(p2);
-        // Point p3 = convert_depth_to_point(cv::Point(depth_image.cols-1, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, depth_image.cols-1)), camera_info);
-        // polygon_corners.push_back(p3);
-        // Point p4 = convert_depth_to_point(cv::Point(0, depth_image.rows-1), static_cast<double>(depth_image.at<float>(depth_image.rows-1, 0)), camera_info);
-        // polygon_corners.push_back(p4);
-
-        // for (auto it = begin (polygon_corners); it != end (polygon_corners); ++it) {
-        //     convert_to_grid_coords(*it, 0, 0);
-        //     rotate_local_grid(*it, yaw);
-        //     get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
-        // }
-        
-        // log_debug(t8.log());
 
         Timer t9 = Timer("polygon");
 
@@ -456,28 +396,10 @@ private:
                     full_map_msg->data[index] = 0;
                 }    
             } else {
-                log("Assignment exceeds map dimensions");
+                relocate();
+                return;
             }
         }
-
-        // Point p;
-        // for(int i = min_grid_y; i<max_grid_y ;i++) {
-        //     for(int j = min_grid_x;j<max_grid_x;j++) {
-        //         // p.global_grid_x = j;
-        //         // p.global_grid_y = i;
-        //         // if(isPointInConvexPolygon(p, polygon_corners)) {
-        //             size_t index = (i*grid_width)+j;
-        //             log_odds_map[index] += log_odds_miss;
-        //             if(log_odds_map[index] >= log_odds_mark) {
-        //                 full_map_msg->data[index] = 100;
-        //             } else if(log_odds_map[index] > log_odds_miss) {
-        //                 full_map_msg->data[index] = -1;
-        //             } else {
-        //                 full_map_msg->data[index] = 0;
-        //             }    
-        //         // }
-        //     }
-        // }
 
 
         log_debug(t9.log());
@@ -485,14 +407,39 @@ private:
         Timer t7 = Timer("create and publish");
 
         full_map_msg->header.stamp = this->now();
-        //log_debug("Created map msg");
 
-        //publish map
         instant_map_pub->publish(*instant_map_msg);
         map_pub->publish(*full_map_msg);
 
         log_debug(t7.log());
     }
+
+    void relocate() {
+        // Update class member variables
+        grid_origin_x = odometry_msg->pose.pose.position.x - (WIDTH * RESOLUTION / 2.0);
+        grid_origin_y = odometry_msg->pose.pose.position.y - (HEIGHT * RESOLUTION / 2.0);
+        
+        // Clear and resize maps
+        instant_map_msg->data.clear();
+        instant_map_msg->data.resize(grid_height*grid_width, 0);
+        instant_map_msg->info.origin.position.x = grid_origin_x;
+        instant_map_msg->info.origin.position.y = grid_origin_y;
+        
+        full_map_msg->data.clear();
+        full_map_msg->data.resize(grid_height*grid_width, -1);
+        full_map_msg->info.origin.position.x = grid_origin_x;
+        full_map_msg->info.origin.position.y = grid_origin_y;
+        
+        // Reset log odds map
+        for(int i = 0; i < HEIGHT*WIDTH; i++) {
+            log_odds_map[i] = log_odds_unknown;
+        }
+    
+        RCLCPP_INFO(this->get_logger(), "relocated map");
+        get_points(mask_image_msg, depth_image_msg, camera_info_msg);
+        map_pub->publish(*full_map_msg);
+    }
+
 
     void timer_callback() {
         bool recv = depth_recv;
@@ -501,8 +448,6 @@ private:
         recv = recv && odometry_recv;
         if(recv) {
             get_points(mask_image_msg, depth_image_msg, camera_info_msg);
-        } else {
-            //log_debug("Waiting for subscriptions");
         }
     }
 
