@@ -2,6 +2,7 @@
 #include "rclcpp/qos.hpp"
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -152,7 +153,6 @@ public:
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odom", 10, 
             std::bind(&HeightMaskPublisherNode::odomCallback, this, std::placeholders::_1));
-
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
@@ -171,6 +171,8 @@ public:
             RCLCPP_INFO(this->get_logger(), "Created publisher for /detector/%s/coordinates", 
                         obj_type.topic_name.c_str());
         }
+        
+        stats_pub = this->create_publisher<std_msgs::msg::String>("/detector/stats", 10);
         
         pointcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/height_mask/pointcloud", 10);
 
@@ -460,7 +462,13 @@ private:
             }
         }
         
-        return label_image;
+        return label_image; 
+    }
+
+    void publishBBOX(const std::string msg,rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher){
+        std_msgs::msg::String message;
+        message.data = msg;
+        publisher->publish(message);
     }
 
     void publish_mask(sensor_msgs::msg::Image::SharedPtr rgb, sensor_msgs::msg::Image::SharedPtr depth, 
@@ -527,6 +535,7 @@ private:
                 }
             }
 
+            std::vector<std::vector<int>> ObstacleStats(obstacle_types.size(), std::vector<int>(4, -1));//xmin, xmax, ymin, ymax
             int mask_pixel_count = 0;
             for (int i = 0; i < depth_image.rows; i++) {
                 for (int j = 0; j < depth_image.cols; j++) {
@@ -537,6 +546,12 @@ private:
                             const std::string& type = obstacle_types[label];
                             
                             if (!type.empty()) {
+                                auto& stats = ObstacleStats[label];
+                                
+                                if (stats[0] == -1 || j < stats[0]) stats[0] = j;
+                                if (j > stats[1]) stats[1] = j;
+                                if (stats[2] == -1 || i < stats[2]) stats[2] = i;
+                                if (i > stats[3]) stats[3] = i;
                                 Point base_point = convert_depth_to_point(j, i, depthvalue, camera_info);
                                 if (this->sim){
                                     base_point = cloudPointToBaselink(base_point);
@@ -556,7 +571,25 @@ private:
                     }
                 }
             }
-            
+
+            std::ostringstream stats_summary;
+            for (int i = 0; i < ObstacleStats.size(); i++){
+                if (ObstacleStats[i][0] != -1){
+                    RCLCPP_INFO(this->get_logger(), "OBSTACLE TYPE: %s %d %d %d %d", obstacle_types[i].c_str(),ObstacleStats[i][0], ObstacleStats[i][1], ObstacleStats[i][2], ObstacleStats[i][3]);
+                    int x = ObstacleStats[i][0];
+                    int y = ObstacleStats[i][3];
+                    int width = ObstacleStats[i][1] - ObstacleStats[i][0];
+                    int height = ObstacleStats[i][3] - ObstacleStats[i][2];
+
+                    stats_summary << "Label: " << i << ", Type: " << obstacle_types[i] << ", X: " << x << ", Y: " << y << ", Width: " << width << ", Height: " << height << "\n";
+                }
+            }
+
+        std::string msg_str = stats_summary.str();
+        if(!msg_str.empty() && msg_str.back() == '\n')msg_str.pop_back();
+        if (!msg_str.empty())publishBBOX(msg_str, stats_pub);
+        //         }
+        //     }
             // RCLCPP_INFO(this->get_logger(), "Total mask pixels set: %d", mask_pixel_count);
             
             rclcpp::Time current_time = this->now();
@@ -772,6 +805,7 @@ private:
     bool odom_recv;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr stats_pub;
     
     sensor_msgs::msg::Image::SharedPtr rgb_image_msg, depth_image_msg;
     sensor_msgs::msg::CameraInfo::SharedPtr camera_info_msg;
