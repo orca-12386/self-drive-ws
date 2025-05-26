@@ -196,15 +196,60 @@ private:
       return geometry_msgs::msg::PoseStamped();
     }
 
-    MapPose white_mp = Utils::exploreLane(first_white_mp, current_map_white, 40);
+    std::queue<MapPose> q;
+    std::set<std::pair<int, int>> visited;
+
+    q.push(first_white_mp);
+    visited.insert({first_white_mp.x, first_white_mp.y});
+
+    MapPose white_mp = first_white_mp;
+
+    int max_distance = 50;  // pixels
+
+    while (!q.empty()) {
+      MapPose current = q.front();
+      q.pop();
+
+      white_mp = current;  // last valid pixel
+
+      // Search a 5x5 neighborhood
+      for (int dx = -5; dx <= 5; ++dx) {
+        for (int dy = -5; dy <= 5; ++dy) {
+          int nx = current.x + dx;
+          int ny = current.y + dy;
+
+          if (visited.count({nx, ny})) continue;
+
+          // Only consider pixels within map bounds
+          if (nx < 0 || ny < 0 || nx >= static_cast<int>(current_map_white.width) ||
+              ny >= static_cast<int>(current_map_white.height)) {
+            continue;
+          }
+
+          // Limit search radius from the starting point
+          if (std::abs(nx - first_white_mp.x) > max_distance ||
+              std::abs(ny - first_white_mp.y) > max_distance) {
+            continue;
+          }
+
+          if (current_map_white.grid[ny][nx] == 100) {
+            q.push({nx, ny});
+            visited.insert({nx, ny});
+          }
+        }
+      }
+    }
+
+
+    RCLCPP_INFO(this->get_logger(), "%d %d %d %d", first_white_mp.x, first_white_mp.y, white_mp.x, white_mp.y);
 
     WorldPose white_wp =
         Utils::getWorldPoseFromMapPose(white_mp, current_map_white);
 
     double goal_theta = Utils::getAngleRadians(current_pose.world_pose, white_wp);
 
-    double goal_x = white_wp.x - 0.3 * cos(goal_theta);
-    double goal_y = white_wp.y - 0.3 * sin(goal_theta);
+    double goal_x = white_wp.x - 0.715 * cos(goal_theta);
+    double goal_y = white_wp.y - 0.715 * sin(goal_theta);
 
     geometry_msgs::msg::PoseStamped goal;
     goal.header.frame_id = "map";

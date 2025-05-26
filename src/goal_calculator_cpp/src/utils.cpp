@@ -140,18 +140,15 @@ public:
 
       last_cell = current;
 
-      if (max_distance >= 0 && Utils::mapDistance(current, start) > max_distance) {
-        continue;
-      }
-
-      for (int i = 0; i < 8; i++) {
+      for (int i = 0; i < 4; i++) {
         int nx = current.x + dx[i];
         int ny = current.y + dy[i];
         MapPose neighbor(nx, ny);
         int hash = hashFunc(neighbor);
 
         if (nx >= 0 && nx < map.width && ny >= 0 && ny < map.height &&
-            visited.find(hash) == visited.end() && map.grid[ny][nx] == 100) {
+            visited.find(hash) == visited.end() && map.grid[ny][nx] == 100 &&
+            (max_distance < 0 || Utils::mapDistance(neighbor, start) <= max_distance)) {
           visited.insert(hash);
           q.push(neighbor);
         }
