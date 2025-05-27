@@ -70,41 +70,71 @@ class RightTurnNode(Node):
         if self.map_data is None:
             self.get_logger().info("Map Data Not Received")
             return
-
+        
         self.get_logger().info("Finding Right Lane Point")
-
+        
         occupied_points = np.argwhere(self.map_data > 0)
         if len(occupied_points) == 0:
             self.get_logger().info("No occupied points found in map")
             return
-
+        
         clustering = DBSCAN(eps=eps, min_samples=min_cluster_size).fit(occupied_points)
         labels = clustering.labels_
-
         unique_labels, counts = np.unique(labels, return_counts=True)
+        
         valid_clusters = [label for label, count in zip(unique_labels, counts)
-                          if label != -1 and count >= min_cluster_size]
-
+                        if label != -1 and count >= min_cluster_size]
+        
         if not valid_clusters:
             self.get_logger().info("No valid clusters found")
             return
-
+        
         bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
-        bot_point = np.array([bot_y, bot_x]) 
+        bot_point = np.array([bot_y, bot_x])
 
-        min_dist = float('inf')
-        nearest_point = None
+        min_cluster_dist = float('inf')
+        nearest_cluster_label = None
+        
         for label in valid_clusters:
             cluster_points = occupied_points[labels == label]
             dists = np.linalg.norm(cluster_points - bot_point, axis=1)
-            idx = np.argmin(dists)
-            if dists[idx] < min_dist:
-                min_dist = dists[idx]
-                nearest_point = tuple(cluster_points[idx][::-1]) 
-
-        if nearest_point:
-            self.get_logger().info(f"Right Lane Found at point: {nearest_point}")
-            return nearest_point
+            min_dist_in_cluster = np.min(dists)
+            
+            if min_dist_in_cluster < min_cluster_dist:
+                min_cluster_dist = min_dist_in_cluster
+                nearest_cluster_label = label
+        
+        if nearest_cluster_label is None:
+            self.get_logger().info("No nearest cluster found")
+            return None
+        
+        nearest_clusters = occupied_points[labels == nearest_cluster_label]
+        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        
+        directions = nearest_clusters - bot_point
+        
+        angles = np.arctan2(directions[:, 0], directions[:, 1])
+        relative_angles = angles - bot_yaw
+        
+        relative_angles = np.arctan2(np.sin(relative_angles), np.cos(relative_angles))
+        
+        angle_threshold = np.pi/6
+        target_angle = -np.pi/2  
+        
+        is_right = np.abs(relative_angles - target_angle) < angle_threshold
+        right_points = nearest_clusters[is_right]
+        
+        if len(right_points) == 0:
+            self.get_logger().info("No points to the right of bot in nearest cluster")
+            return None
+        
+        dists = np.linalg.norm(right_points - bot_point, axis=1)
+        idx = np.argmin(dists)
+        nearest_right_point = tuple(right_points[idx][::-1]) 
+        
+        if nearest_right_point:
+            self.get_logger().info(f"Right Lane Found at point: {nearest_right_point}")
+            return nearest_right_point
         else:
             self.get_logger().info("No right lane point found in clusters")
             return None
@@ -169,8 +199,15 @@ class RightTurnNode(Node):
         right_world_x, right_world_y = self.map_to_world(right_map_x, right_map_y)
 
         bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        print(bot_yaw)
         bot_yaw = round(bot_yaw/(math.pi/2)) * (math.pi/2)
+        print(f"Bot Yaw: {bot_yaw}")
         goal_yaw = bot_yaw - math.pi / 2
+        print(f"Goal Yaw: {goal_yaw}")
+
+        perpendicular_slope = goal_yaw + math.pi / 2
+        perpendicular_direction_x = math.cos(perpendicular_slope)
+        perpendicular_direction_y = math.sin(perpendicular_slope)
 
         goal_x, goal_y = self.map_to_world(self.farthest_point[0], self.farthest_point[1])
 
@@ -179,8 +216,8 @@ class RightTurnNode(Node):
 
         self.get_logger().info(f"Offset Distance: {offset_distance}")
         
-        offset_x = offset_distance * math.cos(bot_yaw)
-        offset_y = offset_distance * math.sin(bot_yaw)
+        offset_x = offset_distance * perpendicular_direction_x
+        offset_y = offset_distance * perpendicular_direction_y
         goal_x += offset_x
         goal_y += offset_y
 
