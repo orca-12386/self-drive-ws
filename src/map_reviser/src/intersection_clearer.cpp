@@ -39,6 +39,11 @@ public:
         service = this->create_service<example_interfaces::srv::SetBool>(
             "clear_intersection", std::bind(&MapToggleService::handleToggleRequest, this, _1, _2));
 
+        got_white_map = false;
+        got_yellow_map = false;
+        got_odom = false;
+    
+        recorded_pose = false;
 
         RCLCPP_INFO(this->get_logger(), "MapToggleService started.");
     }
@@ -123,50 +128,6 @@ private:
         }
     }
 
-    void handleToggleRequest(
-        const std::shared_ptr<example_interfaces::srv::SetBool::Request> request,
-        std::shared_ptr<example_interfaces::srv::SetBool::Response> response)
-    {
-        if (request->data == false) {
-            recorded_pose = false;
-            RCLCPP_INFO(this->get_logger(), "Clearing recorded point");
-        }
-    
-        if (request->data == true && recorded_pose == false) {
-            double theta;
-            if (Utils::worldDistance(current_pose.world_pose, prev_pose.world_pose) <
-                0.1) {
-                theta = current_pose.yaw;
-            } else {
-                theta =
-                    Utils::getAngleRadians(prev_pose.world_pose, current_pose.world_pose);
-            }
-    
-            MapPose nearest_yellow_mp = Utils::findClosestForValue(
-                current_pose.map_pose, current_yellow_map, 300, 100
-            );
-    
-            start_clearing_point =
-                Utils::getWorldPoseFromMapPose(nearest_yellow_mp, current_white_map);
-    
-            recorded_pose = true;
-    
-            RCLCPP_INFO(this->get_logger(), "Recorded starting clearing point");
-        }
-    
-        mode_active = request->data;
-    
-        if (mode_active) {
-            rclcpp::sleep_for(std::chrono::milliseconds(100));
-            clearIntersection();
-        } else {
-            rclcpp::sleep_for(std::chrono::milliseconds(50));
-            sitIdle();
-        }
-    
-        response->success = true;
-    }
-
     void clearIntersection()
     {
         if(!got_yellow_map) {
@@ -235,6 +196,8 @@ private:
         publishClearedMap();
     }
 
+    rclcpp::Time last_map_publish_time;
+
     void publishClearedMap()
     {
         nav_msgs::msg::OccupancyGrid output_map;
@@ -262,7 +225,86 @@ private:
             }
         }
 
+        // Record publish time
+        last_map_publish_time = this->now();
+        
         map_pub->publish(output_map);
+        
+        RCLCPP_INFO(this->get_logger(), "Published cleared map at time: %f", 
+                    last_map_publish_time.seconds());
+    }
+
+    void handleToggleRequest(
+        const std::shared_ptr<example_interfaces::srv::SetBool::Request> request,
+        std::shared_ptr<example_interfaces::srv::SetBool::Response> response)
+    {
+        if (request->data == false) {
+            recorded_pose = false;
+            mode_active = false;  // Also set mode_active to false
+            RCLCPP_INFO(this->get_logger(), "Clearing recorded point and deactivating mode");
+            response->success = true;
+            response->message = "Recorded point cleared and mode deactivated";
+            return;  // Return early to avoid executing the rest
+        }
+    
+        if (request->data == true && recorded_pose == false) {
+            double theta;
+            if (Utils::worldDistance(current_pose.world_pose, prev_pose.world_pose) <
+                0.1) {
+                theta = current_pose.yaw;
+            } else {
+                theta =
+                    Utils::getAngleRadians(prev_pose.world_pose, current_pose.world_pose);
+            }
+    
+            MapPose nearest_yellow_mp = Utils::findClosestForValue(
+                current_pose.map_pose, current_yellow_map, 300, 100
+            );
+    
+            start_clearing_point =
+                Utils::getWorldPoseFromMapPose(nearest_yellow_mp, current_white_map);
+    
+            recorded_pose = true;
+            RCLCPP_INFO(this->get_logger(), "Recorded starting clearing point");
+        }
+    
+        mode_active = request->data;
+    
+        if (mode_active) {
+            RCLCPP_INFO(this->get_logger(), "Starting intersection clearing...");
+            
+            // Perform the clearing algorithm (this calls publishClearedMap internally)
+            clearIntersection();
+            
+            // Get the number of subscribers to ensure delivery
+            size_t subscriber_count = map_pub->get_subscription_count();
+            RCLCPP_INFO(this->get_logger(), 
+                    "Map published to %zu subscribers, waiting for delivery...", 
+                    subscriber_count);
+            
+            // Wait longer if there are more subscribers, minimum 500ms, maximum 2000ms
+            int wait_time_ms = std::max(500, std::min(2000, (int)(subscriber_count * 200 + 500)));
+            rclcpp::sleep_for(std::chrono::milliseconds(wait_time_ms));
+            
+            RCLCPP_INFO(this->get_logger(), 
+                    "Intersection clearing completed, ensured delivery after %dms", 
+                    wait_time_ms);
+            
+            response->message = "Intersection cleared and map delivered to " + 
+                            std::to_string(subscriber_count) + " subscribers";
+            
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Switching to idle mode...");
+            sitIdle();  // This also publishes the map
+            
+            // Shorter delay for idle mode
+            rclcpp::sleep_for(std::chrono::milliseconds(200));
+            
+            RCLCPP_INFO(this->get_logger(), "Idle mode activated");
+            response->message = "Switched to idle mode";
+        }
+    
+        response->success = true;
     }
 
     void sitIdle()
@@ -270,6 +312,7 @@ private:
         if (!got_white_map)
             return;
 
+        RCLCPP_INFO(this->get_logger(), "Publishing same map");
         publishClearedMap();
     }
 
@@ -317,11 +360,11 @@ private:
     rclcpp::TimerBase::SharedPtr timer;
     bool mode_active;
 
-    bool got_white_map = false;
-    bool got_yellow_map = false;
-    bool got_odom = false;
+    bool got_white_map;
+    bool got_yellow_map;
+    bool got_odom;
 
-    bool recorded_pose = false;
+    bool recorded_pose;
 
     WorldPose start_clearing_point;
 

@@ -368,8 +368,8 @@ private:
                     full_map_msg->data[index] = 0;
                 }    
             } else {
-                relocate();
-                return;
+                // relocate();
+                // return;
             }
         }
 
@@ -396,8 +396,8 @@ private:
                     full_map_msg->data[index] = 0;
                 }    
             } else {
-                relocate();
-                return;
+                // relocate();
+                // return;
             }
         }
 

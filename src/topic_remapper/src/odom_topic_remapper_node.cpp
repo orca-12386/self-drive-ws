@@ -16,7 +16,7 @@
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<TopicRemapperNode<nav_msgs::msg::Odometry>>("/topic_remapper/odometry");
+    auto node = std::make_shared<TopicRemapperNode<nav_msgs::msg::Odometry>>();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

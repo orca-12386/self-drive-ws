@@ -18,7 +18,7 @@
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<TopicRemapperNode<nav_msgs::msg::OccupancyGrid>>("/topic_remapper/motion_control");
+    auto node = std::make_shared<TopicRemapperNode<nav_msgs::msg::OccupancyGrid>>();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

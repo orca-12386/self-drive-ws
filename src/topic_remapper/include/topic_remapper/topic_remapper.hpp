@@ -19,13 +19,13 @@
 template<typename message_type>
 class TopicRemapperNode : public rclcpp::Node {
 public: 
-    TopicRemapperNode(std::string service_name) : rclcpp::Node("topic_remapper_node") {
-        this->service_name = service_name;
+    TopicRemapperNode() : rclcpp::Node("topic_remapper_node") {
 
         RCLCPP_INFO(this->get_logger(), "topic_remapper_node started");
 
         this->declare_parameter("default_sub_topic", rclcpp::PARAMETER_STRING);
         this->declare_parameter("pub_topic", rclcpp::PARAMETER_STRING);
+        this->declare_parameter("service_name", "/topic_remapper" + this->get_parameter("pub_topic").as_string());
 
         this->initialise_data();
     };
@@ -47,6 +47,7 @@ private:
     void initialise_data() {
         std::string default_sub_topic = this->get_parameter("default_sub_topic").as_string();
         std::string pub_topic = this->get_parameter("pub_topic").as_string();
+        this->service_name = this->get_parameter("service_name").as_string();
 
         sub = this->create_subscription<message_type>(default_sub_topic, 10, std::bind(&TopicRemapperNode::topic_callback, this, std::placeholders::_1));
         pub = this->create_publisher<message_type>(pub_topic, 10);
