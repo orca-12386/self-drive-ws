@@ -442,18 +442,14 @@ private:
         yaw = std::atan2(dy, dx);
       }
 
-      double rounded_yaw = std::round(yaw / (M_PI / 2)) * (M_PI / 2);
-      clearPixelsBehind(current_pose.map_pose, rounded_yaw);
-      MapPose mp =
-          findClosestMiddleLane(current_pose.map_pose, current_map, 35);
-      MapPose mpe = exploreMiddleLane(mp, current_map);
-      WorldPose wpe = getWorldPoseFromMapPose(mpe, current_map);
-      wpe.x = wpe.x + 4.5 * cos(rounded_yaw);
-      wpe.y = wpe.y + 4.5 * sin(rounded_yaw);
+      MapPose mp = current_pose.map_pose;
+      WorldPose wpe = getWorldPoseFromMapPose(mp, current_map);
+      wpe.x = wpe.x + 6 * cos(yaw);
+      wpe.y = wpe.y + 6 * sin(yaw);
       MapPose scan_center = getMapPoseFromWorldPose(wpe, current_map);
 
       response->is_intersection =
-          intersectionConfidence(scan_center, current_map, 30);
+          intersectionConfidence(scan_center, current_map, 15);
     } else {
       response->is_intersection = false;
     }
