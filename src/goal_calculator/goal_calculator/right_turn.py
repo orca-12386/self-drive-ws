@@ -63,6 +63,22 @@ class RightTurnNode(Node):
         euler = quat_to_euler([quat.x, quat.y, quat.z, quat.w])
         return euler[2]
 
+    def calc_angle(self,pt1, pt2):
+        dx = pt2[0] - pt1[0]
+        dy = pt2[1] - pt1[1]
+
+        if dx == 0 and dy == 0:
+            return 0.0
+        angle = math.atan2(dy, dx)
+        return angle
+
+    def is_valid_point(self, src, next_point):
+        angle = self.calc_angle(src, next_point)
+        if angle > 0 and angle<math.pi/2:
+            return True
+        else:
+            return False
+
     def find_right_lane_point(self, min_cluster_size=15, eps=25):
         if self.bot_position is None:
             self.get_logger().info("Odometry Not Received")
@@ -113,35 +129,26 @@ class RightTurnNode(Node):
         if start is None:
             return None
 
-        yaw = self.get_yaw_from_quaternion(self.bot_orientation)
-        fx, fy = math.cos(yaw), math.sin(yaw)  
-
-        all_directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
         new_directions = list()
         skip_dist = 1.0 # in metres
         skip_dist = skip_dist / self.map_resolution # grid coords
         for i in range(2, int(skip_dist)+1):
-            for j in range(len(all_directions)):
-                new_directions.append((all_directions[j][0]*i, all_directions[j][1]*i))
-        all_directions.extend(new_directions)
+            for j in range(len(directions)):
+                new_directions.append((directions[j][0]*i, directions[j][1]*i))
+        directions.extend(new_directions)
         
-        directions = []
-        for dx, dy in all_directions:
-            dot_product = dx * fx + dy * fy  
-            if dot_product > 0:  
-                directions.append((dx, dy))
-
         queue = deque([start])
         visited = {start}
         farthest = start
 
         while queue:
             x, y = queue.popleft()
-
             for dx, dy in directions:
                 nx, ny = x + dx, y + dy
+                next_point = (nx, ny)
                 if (0 <= nx < self.map_width and 0 <= ny < self.map_height and 
-                    self.map_data[ny, nx] > 0 and (nx, ny) not in visited):
+                    self.map_data[ny, nx] > 0 and (nx, ny) not in visited and self.is_valid_point(start, next_point)):
                     queue.append((nx, ny))
                     visited.add((nx, ny))
                     farthest = (nx, ny)
@@ -153,7 +160,7 @@ class RightTurnNode(Node):
         world_x, world_y = self.map_to_world(farthest[0], farthest[1])
         self.get_logger().info(f"Farthest Lane Point Found: ({world_x}, {world_y})")
         return farthest
-
+        
     def calculate_goal(self):
         if self.bot_position is None or self.map_data is None:
             return
