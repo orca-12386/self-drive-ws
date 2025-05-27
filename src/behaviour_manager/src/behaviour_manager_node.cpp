@@ -851,7 +851,7 @@ private:
     void obstructed_dynamic_pedestrian_in_lane_stop() {
         if(is_detected.at("pedestrian") && check_and_increment_action_count(0)) {
             stop_in_lane_action();
-            wait(30);
+            wait(10);
         } else if(is_detected.at("barrel") && check_and_increment_action_count(1)) {
             stop_in_lane_action();
             rclcpp::shutdown();
@@ -914,48 +914,44 @@ private:
 
     void full_course() {
         if(is_detected.at("stop_sign")) {
-            log("Stop sign detected");
-            if(detections["stop_sign"]->edge) {
-                log("Stop sign detected at edge");
-                lane_follow_srv(false);
+            stop_intersection_action();
+            if(check_intersection()) {
+                if(current_turn_index >= turn_sequence.size()) {
+                    rclcpp::shutdown();
+                }
+                switch(turn_sequence[current_turn_index]) {
+                    case 0:
+                        straight_turn_action();
+                        break;
+                    case 1:
+                        right_turn_action();
+                        break;
+                    case 2:
+                        left_turn_action();
+                        break;
+                }
+                current_turn_index++;
+            } 
+        } else if(is_detected.at("pedestrian")) {
+            if(detections["pedestrian"]->current) {
                 stop_in_lane_action();
-                if(check_intersection()) {
-                    switch(turn_sequence[current_turn_index]) {
-                        case 0:
-                            straight_turn_action();
-                            break;
-                        case 1:
-                            right_turn_action();
-                            break;
-                        case 2:
-                            left_turn_action();
-                            break;
-                    }
-                    if (current_turn_index < turn_sequence.size()-1) {
-                        current_turn_index++;
-                    }
-                }    
-            }
-        } else if(is_detected.at("tyre")) {
-            if(detections["tyre"]->current) {
-                log("Tyre detected");
-                lane_follow_srv(false);
-                lane_change_action();    
+                wait(10);
             }
         } else if(is_detected.at("barrel")) {
             if(detections["barrel"]->current) {
-                log("Traffic drum detected in current lane");
-                lane_follow_srv(false);
-                lane_change_action();    
-            } else if(detections["barrel"]->edge) {
-                log("Traffic drum detected at edge");
+                lane_change_action();                
             }
+        } else if(is_detected.at("pothole")) {
+            lane_change_action();
+        } else if(is_detected.at("tyre")) {
+            lane_change_action();
         } else {
             if(get_mode() == 0) {
                 lane_follow_srv(true);
             }
         }
     }
+
 };
 
 
