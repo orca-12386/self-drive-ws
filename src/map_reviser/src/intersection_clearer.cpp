@@ -39,9 +39,6 @@ public:
         service = this->create_service<example_interfaces::srv::SetBool>(
             "clear_intersection", std::bind(&MapToggleService::handleToggleRequest, this, _1, _2));
 
-        timer = this->create_wall_timer(
-            std::chrono::milliseconds(100),
-            std::bind(&MapToggleService::timerCallback, this));
 
         RCLCPP_INFO(this->get_logger(), "MapToggleService started.");
     }
@@ -68,6 +65,12 @@ private:
         }
 
         original_white_map = current_white_map;  // Backup the original map
+
+        if (mode_active) {
+            clearIntersection();
+        } else {
+            sitIdle();
+        }
     }
 
     void yellowMapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
@@ -115,7 +118,7 @@ private:
         }
 
         if (got_white_map) {
-        current_pose.map_pose =
+            current_pose.map_pose =
             Utils::getMapPoseFromWorldPose(current_pose.world_pose, current_white_map);
         }
     }
@@ -128,7 +131,7 @@ private:
             recorded_pose = false;
             RCLCPP_INFO(this->get_logger(), "Clearing recorded point");
         }
-
+    
         if (request->data == true && recorded_pose == false) {
             double theta;
             if (Utils::worldDistance(current_pose.world_pose, prev_pose.world_pose) <
@@ -138,47 +141,43 @@ private:
                 theta =
                     Utils::getAngleRadians(prev_pose.world_pose, current_pose.world_pose);
             }
-
-            Utils::removeMapBehindBot(
-                current_yellow_map, current_pose.world_pose, theta, 20, 20
-            );
-
+    
             MapPose nearest_yellow_mp = Utils::findClosestForValue(
-                current_pose.map_pose, current_yellow_map, 150, 100
+                current_pose.map_pose, current_yellow_map, 300, 100
             );
-
-            MapPose farthest_yellow_mp =
-                Utils::exploreLane(nearest_yellow_mp, current_yellow_map);
-
+    
             start_clearing_point =
-                Utils::getWorldPoseFromMapPose(farthest_yellow_mp, current_white_map);
-
+                Utils::getWorldPoseFromMapPose(nearest_yellow_mp, current_white_map);
+    
             recorded_pose = true;
-
+    
             RCLCPP_INFO(this->get_logger(), "Recorded starting clearing point");
         }
-
+    
         mode_active = request->data;
-
-        response->success = true;
-    }
-
-    void timerCallback()
-    {
+    
         if (mode_active) {
+            rclcpp::sleep_for(std::chrono::milliseconds(100));
             clearIntersection();
         } else {
+            rclcpp::sleep_for(std::chrono::milliseconds(50));
             sitIdle();
         }
+    
+        response->success = true;
     }
 
     void clearIntersection()
     {
+        if(!got_yellow_map) {
+            return;
+        }
+
         current_white_map = original_white_map;
 
         MapPose start_clearing_mp = Utils::getMapPoseFromWorldPose(start_clearing_point, current_white_map);
 
-        MapPose start = Utils::findClosestForValue(start_clearing_mp, current_white_map, 100, 100);
+        MapPose start = Utils::findClosestForValue(start_clearing_mp, current_white_map, 300, 100);
 
         const int dx[] = {0, 1, 0, -1, -1, 1, 1, -1};
         const int dy[] = {-1, 0, 1, 0, 1, -1, 1, -1};
@@ -194,10 +193,10 @@ private:
             MapPose current = q.front();
             q.pop();
 
-            if (Utils::mapDistance(start, current) > 65)
+            if (Utils::mapDistance(start, current) > 2.9/current_white_map.resolution)
                 continue;
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 8; i++) {
                 int nx = current.x + dx[i];
                 int ny = current.y + dy[i];
 

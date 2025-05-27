@@ -90,7 +90,7 @@ public:
         
         // Initialize with faster timer
         timer = this->create_wall_timer(
-            std::chrono::milliseconds(50), std::bind(&LaneFollowerNode::timer_callback, this));
+            std::chrono::milliseconds(150), std::bind(&LaneFollowerNode::timer_callback, this));
     };
 
 private:
@@ -219,7 +219,7 @@ private:
         
         // Pre-allocate containers
         goals.reserve(12);
-        orientations.reserve(6);
+        orientations.reserve(11);
         bfs_queue_storage.reserve(1000);
     }
 
@@ -244,7 +244,7 @@ private:
                 
                 // Create new timer with faster rate
                 timer = this->create_wall_timer(
-                    std::chrono::milliseconds(50), 
+                    std::chrono::milliseconds(150), 
                     std::bind(&LaneFollowerNode::timer_callback, this));
                 
                 RCLCPP_INFO(this->get_logger(), "Lane following ON (fast mode)");
@@ -289,7 +289,7 @@ private:
         double yaw = 2.0 * std::atan2(z, w);
         
         orientations.push_back(yaw);
-        if (orientations.size() > 5) {
+        if (orientations.size() > 10) {
             orientations.erase(orientations.begin());
         }
         
@@ -466,10 +466,10 @@ private:
         Point2D goal = {(parent1[0] + parent2[0]) * 0.5, (parent1[1] + parent2[1]) * 0.5};
         
         // Quick goal validation and publishing
-        bool should_update_goal = true;
+        bool should_update_goal = map1->data[grid_index(goal[0], goal[1])] <= 0;
         if (goals.size() >= 2) {
             double angle = calculate_goal_angle(goal, goals);
-            should_update_goal = (angle > 90);
+            should_update_goal = (angle > 100);
         }
         
         Point2D publish_goal_point = should_update_goal ? goal : goals.back();

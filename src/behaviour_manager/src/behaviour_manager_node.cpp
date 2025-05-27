@@ -1133,8 +1133,8 @@ private:
     }
 
     void wait(int secs) {
-        log((std::string("change_motion_control_map ")+std::to_string(secs)).c_str());
-        std::this_thread::sleep_for(std::chrono::seconds(secs));
+        log((std::string("wait ")+std::to_string(secs)).c_str());
+        rclcpp::sleep_for(std::chrono::seconds(secs));
     }
 
     void change_motion_control_map(std::string s) {

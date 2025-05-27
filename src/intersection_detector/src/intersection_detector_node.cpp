@@ -442,14 +442,14 @@ private:
         yaw = std::atan2(dy, dx);
       }
 
-      MapPose mp = current_pose.map_pose;
+      MapPose mp = findClosestMiddleLane(current_pose.map_pose, current_map, 300);
       WorldPose wpe = getWorldPoseFromMapPose(mp, current_map);
-      wpe.x = wpe.x + 6 * cos(yaw);
-      wpe.y = wpe.y + 6 * sin(yaw);
+      wpe.x = wpe.x + 4.5 * cos(yaw);
+      wpe.y = wpe.y + 4.5 * sin(yaw);
       MapPose scan_center = getMapPoseFromWorldPose(wpe, current_map);
 
       response->is_intersection =
-          intersectionConfidence(scan_center, current_map, 15);
+          intersectionConfidence(scan_center, current_map, 20);
     } else {
       response->is_intersection = false;
     }
