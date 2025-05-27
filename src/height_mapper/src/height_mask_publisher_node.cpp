@@ -586,7 +586,7 @@ private:
                 if (ObstacleStats[i][0] != -1){
                     RCLCPP_INFO(this->get_logger(), "OBSTACLE TYPE: %s %d %d %d %d", obstacle_types[i].c_str(),ObstacleStats[i][0], ObstacleStats[i][1], ObstacleStats[i][2], ObstacleStats[i][3]);
                     int x = ObstacleStats[i][0];
-                    int y = ObstacleStats[i][3];
+                    int y = ObstacleStats[i][2];
                     int width = ObstacleStats[i][1] - ObstacleStats[i][0];
                     int height = ObstacleStats[i][3] - ObstacleStats[i][2];
 
