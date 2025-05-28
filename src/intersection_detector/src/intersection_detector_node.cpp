@@ -171,77 +171,77 @@ private:
     return last_cell;
   }
 
-  /* void publishMarker(double x, double y, int id) { */
-  /*   visualization_msgs::msg::Marker marker; */
-  /*   marker.header.frame_id = "map"; */
-  /*   marker.header.stamp = this->now(); */
-  /*   marker.ns = "intersection_markers"; */
-  /*   marker.id = id; */
-  /*   marker.type = visualization_msgs::msg::Marker::SPHERE; */
-  /*   marker.action = visualization_msgs::msg::Marker::ADD; */
-  /**/
-  /*   marker.pose.position.x = x; */
-  /*   marker.pose.position.y = y; */
-  /*   marker.pose.position.z = 0.0; */
-  /**/
-  /*   marker.pose.orientation.x = 0.0; */
-  /*   marker.pose.orientation.y = 0.0; */
-  /*   marker.pose.orientation.z = 0.0; */
-  /*   marker.pose.orientation.w = 1.0; */
-  /**/
-  /*   marker.scale.x = 1.0; */
-  /*   marker.scale.y = 1.0; */
-  /*   marker.scale.z = 1.0; */
-  /**/
-  /*   marker.color.r = 0.0; */
-  /*   marker.color.g = 0.0; */
-  /*   marker.color.b = 1.0; */
-  /*   marker.color.a = 1.0; */
-  /**/
-  /*   marker.lifetime = rclcpp::Duration(0, 0); */
-  /**/
-  /*   marker_publisher->publish(marker); */
-  /* } */
-  /**/
-  /* void createArrowMarker(double curr_x, double curr_y, double prev_x, */
-  /*                        double prev_y, int marker_id) { */
-  /**/
-  /*   visualization_msgs::msg::Marker marker; */
-  /*   marker.header.frame_id = "map"; */
-  /*   marker.header.stamp = rclcpp::Clock().now(); */
-  /*   marker.ns = "arrow_marker"; */
-  /*   marker.id = marker_id; */
-  /*   marker.type = visualization_msgs::msg::Marker::ARROW; */
-  /*   marker.action = visualization_msgs::msg::Marker::ADD; */
-  /**/
-  /*   double dx = curr_x - prev_x; */
-  /*   double dy = curr_y - prev_y; */
-  /*   double yaw = std::atan2(dy, dx); */
-  /**/
-  /*   marker.pose.position.x = prev_x; */
-  /*   marker.pose.position.y = prev_y; */
-  /*   marker.pose.position.z = 0.0; */
-  /**/
-  /*   tf2::Quaternion q; */
-  /*   q.setRPY(0, 0, yaw); */
-  /*   marker.pose.orientation.x = q.x(); */
-  /*   marker.pose.orientation.y = q.y(); */
-  /*   marker.pose.orientation.z = q.z(); */
-  /*   marker.pose.orientation.w = q.w(); */
-  /**/
-  /*   marker.scale.x = 1.0; */
-  /*   marker.scale.y = 0.1; */
-  /*   marker.scale.z = 0.1; */
-  /**/
-  /*   marker.color.r = 1.0; */
-  /*   marker.color.g = 0.0; */
-  /*   marker.color.b = 0.0; */
-  /*   marker.color.a = 1.0; */
-  /**/
-  /*   marker.lifetime = rclcpp::Duration::from_seconds(0); */
-  /**/
-  /*   marker_publisher->publish(marker); */
-  /* } */
+  void publishMarker(double x, double y, int id) {
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = this->now();
+    marker.ns = "intersection_markers";
+    marker.id = id;
+    marker.type = visualization_msgs::msg::Marker::SPHERE;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+  
+    marker.pose.position.x = x;
+    marker.pose.position.y = y;
+    marker.pose.position.z = 0.0;
+  
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+  
+    marker.scale.x = 1.0;
+    marker.scale.y = 1.0;
+    marker.scale.z = 1.0;
+  
+    marker.color.r = 0.0;
+    marker.color.g = 0.0;
+    marker.color.b = 1.0;
+    marker.color.a = 1.0;
+  
+    marker.lifetime = rclcpp::Duration(0, 0);
+  
+    marker_publisher->publish(marker);
+  }
+  
+  void createArrowMarker(double curr_x, double curr_y, double prev_x,
+                         double prev_y, int marker_id) {
+  
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = rclcpp::Clock().now();
+    marker.ns = "arrow_marker";
+    marker.id = marker_id;
+    marker.type = visualization_msgs::msg::Marker::ARROW;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+  
+    double dx = curr_x - prev_x;
+    double dy = curr_y - prev_y;
+    double yaw = std::atan2(dy, dx);
+  
+    marker.pose.position.x = prev_x;
+    marker.pose.position.y = prev_y;
+    marker.pose.position.z = 0.0;
+  
+    tf2::Quaternion q;
+    q.setRPY(0, 0, yaw);
+    marker.pose.orientation.x = q.x();
+    marker.pose.orientation.y = q.y();
+    marker.pose.orientation.z = q.z();
+    marker.pose.orientation.w = q.w();
+  
+    marker.scale.x = 1.0;
+    marker.scale.y = 0.1;
+    marker.scale.z = 0.1;
+  
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
+    marker.color.a = 1.0;
+  
+    marker.lifetime = rclcpp::Duration::from_seconds(0);
+  
+    marker_publisher->publish(marker);
+  }
 
   void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
     current_map.height = msg->info.height;

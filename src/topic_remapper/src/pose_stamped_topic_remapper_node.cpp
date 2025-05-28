@@ -16,7 +16,7 @@
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<TopicRemapperNode<geometry_msgs::msg::PoseStamped>>("/topic_remapper/goal_pose");
+    auto node = std::make_shared<TopicRemapperNode<geometry_msgs::msg::PoseStamped>>();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

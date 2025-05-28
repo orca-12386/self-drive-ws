@@ -5,7 +5,7 @@ import time
 
 class TrafficDrumsDetector(BaseDetector):
     def __init__(self):
-        super().__init__('barrels_detector', '/detector/barrel', 'trained_models/Drums.pt')
+        super().__init__('barrels_detector', '/detector/traffic_drum', 'trained_models/Drums.pt')
         
         # Override model path for drums
         self._load_model()  # Reload model with new path

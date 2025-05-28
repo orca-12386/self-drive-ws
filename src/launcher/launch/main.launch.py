@@ -213,7 +213,7 @@ def generate_launch_description():
         Node(
             package='lane_mapper',
             executable='lane_mapper_node',
-            name='lane_mapper_node',
+            name='white_lane_mapper_node',
             parameters=[{
                 'sim': SIM,
                 'depth_sub_topic': depth_sub_topic,
@@ -225,7 +225,7 @@ def generate_launch_description():
         Node(
             package='lane_mapper',
             executable='lane_mapper_node',
-            name='lane_mapper_node',
+            name='yellow_lane_mapper_node',
             parameters=[{
                 'sim': SIM,
                 'depth_sub_topic': depth_sub_topic,
@@ -247,10 +247,19 @@ def generate_launch_description():
     ]
 
     interpolation = [
+        # Node(
+        #     package='map_reviser',
+        #     executable='yellow_lane_interpolator',
+        #     name='yellow_lane_interpolator',
+        # )
         Node(
-            package='map_reviser',
-            executable='yellow_lane_interpolator',
-            name='yellow_lane_interpolator',
+            package='topic_remapper',
+            executable='occupancy_grid_topic_remapper_node',
+            name='interp_topic_remapper_node',
+            parameters=[{
+                'default_sub_topic': '/map/yellow/local',
+                'pub_topic': '/map/yellow/local/interp',
+            }]
         )
     ]
 
@@ -258,7 +267,7 @@ def generate_launch_description():
         Node(
             package='multimap_assembler',
             executable='multimap_assembler_node',
-            name='multimap_assembler_node',
+            name='map_multimap_assembler_node',
             parameters=[{
                 'map1_sub_topic': '/map/white/local',
                 'map2_sub_topic': '/map/yellow/local',
@@ -269,7 +278,7 @@ def generate_launch_description():
         Node(
             package='multimap_assembler',
             executable='multimap_assembler_node',
-            name='multimap_assembler_node',
+            name='far_multimap_assembler_node',
             parameters=[{
                 'map1_sub_topic': '/map/white/local',
                 'map2_sub_topic': '/map/white/local/near',
@@ -280,7 +289,7 @@ def generate_launch_description():
         Node(
             package='multimap_assembler',
             executable='multimap_assembler_node',
-            name='multimap_assembler_node',
+            name='current_multimap_assembler_node',
             parameters=[{
                 'map1_sub_topic': '/map/white/local/near',
                 'map2_sub_topic': '/map/yellow/local/interp',
@@ -294,7 +303,7 @@ def generate_launch_description():
         Node(
             package='map_localiser',
             executable='map_localiser_node',
-            name='map_localiser_node',
+            name='white_map_localiser_node',
             parameters=[{
                 'map_sub_topic': '/map/yellow'
             }]
@@ -302,7 +311,7 @@ def generate_launch_description():
         Node(
             package='map_localiser',
             executable='map_localiser_node',
-            name='map_localiser_node',
+            name='yellow_map_localiser_node',
             parameters=[{
                 'map_sub_topic': '/map/white',
                 'map_pub_topic': '/map/white/local/temp'
@@ -437,11 +446,12 @@ def generate_launch_description():
     launch_topic_remapper = [
         Node(
             package='topic_remapper',
-            executable='motion_control_topic_remapper_node',
+            executable='occupancy_grid_topic_remapper_node',
             name='motion_control_topic_remapper_node',
             parameters=[{
                 'default_sub_topic': '/map/current',
-                'pub_topic': '/map/motion_control'
+                'pub_topic': '/map/motion_control',
+                'service_name': '/topic_remapper/motion_control'
             }]       
         ),
         Node(
@@ -450,16 +460,16 @@ def generate_launch_description():
             name='odom_topic_remapper_node',
             parameters=[{
                 'default_sub_topic': '/dlo/odom_node/odom',
-                'pub_topic': '/odom'
+                'pub_topic': '/odom',
             }]       
         ),
         Node(
             package='topic_remapper',
-            executable='goal_topic_remapper_node',
+            executable='pose_stamped_topic_remapper_node',
             name='goal_topic_remapper_node',
             parameters=[{
                 'default_sub_topic': '/goal_pose',
-                'pub_topic': '/move_base_simple/goal'
+                'pub_topic': '/move_base_simple/goal',
             }]       
         )
     ]

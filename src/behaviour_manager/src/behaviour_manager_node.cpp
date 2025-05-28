@@ -590,8 +590,8 @@ public:
                 turn_sequence = {1,0,2};
                 current_turn_index = 0;
                 detection_limits = {
-                    {"barrel", 5},
-                    {"stop_sign", 5},
+                    {"traffic_drum", 5},
+                    {"stop_sign", 4},
                     {"pedestrian", 5},
                     {"tyre", 5},
                     {"pothole", 5}
@@ -599,74 +599,74 @@ public:
                 break;
             case 1:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                 };
                 break;
             case 2:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                 };
                 break;
             case 3:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                 };
                 break;
             case 4:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                     {"pothole", 5},
                 };
                 break;
             case 5:
                 detection_limits = {
-                    {"barrel", 5},
-                    {"stop_sign", 5}
+                    {"traffic_drum", 5},
+                    {"stop_sign", 4}
                 };
                 break;
             case 6:
                 detection_limits = {
-                    {"stop_sign", 5},
-                    {"barrel", 5},
+                    {"stop_sign", 4},
+                    {"traffic_drum", 5},
                 };
                 break;
             case 7:
                 detection_limits = {
-                    {"stop_sign", 5},
-                    {"barrel", 2},
+                    {"stop_sign", 4},
+                    {"traffic_drum", 2},
                 };
                 break;
             case 8:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                     {"pedestrian", 5}
                 };
                 break;
             case 9:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                     {"pedestrian", 5}
                 };
                 break;
             case 10:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                     {"pedestrian", 5}
                 };
                 break;
             case 11:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                 };
                 break;
             case 12:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                 };
                 break;
             case 13:
                 detection_limits = {
-                    {"barrel", 2},
+                    {"traffic_drum", 2},
                 };
                 break;
             case 14:
@@ -727,10 +727,10 @@ private:
     void lane_keeping() {
         /*
         Lane follow
-        See barrel and stops at 3 ft from barrel
+        See traffic_drum and stops at 3 ft from traffic_drum
         Terminate
         */
-        if (is_detected.at("barrel")) {
+        if (is_detected.at("traffic_drum")) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -745,7 +745,7 @@ private:
             left_turn_action();
             done = true;
         }
-        if(is_detected.at("barrel")) {
+        if(is_detected.at("traffic_drum")) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -760,7 +760,7 @@ private:
             right_turn_action();
             done = true;
         }
-        if(is_detected.at("barrel")) {
+        if(is_detected.at("traffic_drum")) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -779,7 +779,7 @@ private:
         if(is_detected.at("pothole") && check_and_increment_action_count(0)) {
             lane_change_action();
             rclcpp::shutdown();
-        } else if(is_detected.at("barrel") && check_and_increment_action_count(1)) {
+        } else if(is_detected.at("traffic_drum") && check_and_increment_action_count(1)) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -795,7 +795,7 @@ private:
             if(check_intersection()) {
                 straight_turn_action();
             }
-        } else if(is_detected.at("barrel") && check_and_increment_action_count(1)) {
+        } else if(is_detected.at("traffic_drum") && check_and_increment_action_count(1)) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -811,7 +811,7 @@ private:
             if(check_intersection()) {
                 left_turn_action();
             }
-        } else if(is_detected.at("barrel") && check_and_increment_action_count(1)) {
+        } else if(is_detected.at("traffic_drum") && check_and_increment_action_count(1)) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -827,7 +827,7 @@ private:
             if(check_intersection()) {
                 right_turn_action();
             }
-        } else if(is_detected.at("barrel") && check_and_increment_action_count(1)) {
+        } else if(is_detected.at("traffic_drum") && check_and_increment_action_count(1)) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -852,7 +852,7 @@ private:
         if(is_detected.at("pedestrian") && check_and_increment_action_count(0)) {
             stop_in_lane_action();
             wait(10);
-        } else if(is_detected.at("barrel") && check_and_increment_action_count(1)) {
+        } else if(is_detected.at("traffic_drum") && check_and_increment_action_count(1)) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -865,7 +865,7 @@ private:
     void static_pedestrian_lane_change() {
         if(is_detected.at("pedestrian") && check_and_increment_action_count(0)) {
             lane_change_action();
-        } else if(is_detected.at("barrel") && check_and_increment_action_count(1)) {
+        } else if(is_detected.at("traffic_drum") && check_and_increment_action_count(1)) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -876,9 +876,9 @@ private:
     }
 
     void obstacle_detection_lane_change() {
-        if(is_detected.at("barrel") && check_and_increment_action_count(0)) {
+        if(is_detected.at("traffic_drum") && check_and_increment_action_count(0)) {
             lane_change_action();
-        } else if(is_detected.at("barrel") && check_and_increment_action_count(1)) {
+        } else if(is_detected.at("traffic_drum") && check_and_increment_action_count(1)) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -937,8 +937,8 @@ private:
                 stop_in_lane_action();
                 wait(10);
             }
-        } else if(is_detected.at("barrel")) {
-            if(detections["barrel"]->current) {
+        } else if(is_detected.at("traffic_drum")) {
+            if(detections["traffic_drum"]->current) {
                 lane_change_action();                
             }
         } else if(is_detected.at("pothole")) {
@@ -1010,7 +1010,7 @@ private:
             std::bind(&BehaviourManagerNode::odomCallback, this, std::placeholders::_1));
         
         detection_topics = {
-            {"barrel", "/detector/barrel/coordinates"},
+            {"traffic_drum", "/detector/traffic_drum/coordinates"},
             {"stop_sign", "/detector/stop_sign/coordinates"},
             {"pedestrian", "/detector/pedestrian/coordinates"},
             {"tyre", "/detector/tyre/coordinates"},
@@ -1146,6 +1146,7 @@ private:
     }
 
     void lane_interp_srv(bool toggle) {
+        return;
         log((std::string("lane_interp_srv ")+std::to_string(toggle)).c_str());
         lane_interpolation_toggle_request->data = toggle;            
         lane_interpolation_toggle_srv_client->call(lane_interpolation_toggle_request);

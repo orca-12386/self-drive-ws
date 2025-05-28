@@ -29,8 +29,8 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typ
 
 include_directories(include)
 
-add_executable(motion_control_topic_remapper_node src/motion_control_topic_remapper_node.cpp)
-ament_target_dependencies(motion_control_topic_remapper_node
+add_executable(occupancy_grid_topic_remapper_node src/occupancy_grid_topic_remapper_node.cpp)
+ament_target_dependencies(occupancy_grid_topic_remapper_node
   rclcpp
   std_msgs
   nav_msgs
@@ -45,24 +45,24 @@ ament_target_dependencies(odom_topic_remapper_node
   geometry_msgs
 )
 
-add_executable(goal_topic_remapper_node src/goal_topic_remapper_node.cpp)
-ament_target_dependencies(goal_topic_remapper_node
+add_executable(pose_stamped_topic_remapper_node src/pose_stamped_topic_remapper_node.cpp)
+ament_target_dependencies(pose_stamped_topic_remapper_node
   rclcpp
   std_msgs
   nav_msgs
   geometry_msgs
 )
 
-target_link_libraries(motion_control_topic_remapper_node "${cpp_typesupport_target}")
+target_link_libraries(occupancy_grid_topic_remapper_node "${cpp_typesupport_target}")
 target_link_libraries(odom_topic_remapper_node "${cpp_typesupport_target}")
-target_link_libraries(goal_topic_remapper_node "${cpp_typesupport_target}")
+target_link_libraries(pose_stamped_topic_remapper_node "${cpp_typesupport_target}")
 
 
 # Install the executable
 install(TARGETS
-  motion_control_topic_remapper_node
+  occupancy_grid_topic_remapper_node
   odom_topic_remapper_node
-  goal_topic_remapper_node
+  pose_stamped_topic_remapper_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

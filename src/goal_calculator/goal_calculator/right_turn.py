@@ -131,7 +131,7 @@ class RightTurnNode(Node):
 
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
         new_directions = list()
-        skip_dist = 1.0 # in metres
+        skip_dist = 2.0 # in metres
         skip_dist = skip_dist / self.map_resolution # grid coords
         for i in range(2, int(skip_dist)+1):
             for j in range(len(directions)):
