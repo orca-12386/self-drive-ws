@@ -25,7 +25,7 @@ class LeftTurnNode(Node):
     def __init__(self):
         super().__init__('left_turn_node')
         self.map_subscription = self.create_subscription(OccupancyGrid, '/map/yellow/local', self.map_callback, 10)
-        self.odom_subscription = self.create_subscription(Odometry, '/odom/transformed', self.odom_callback, 10)
+        self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.action_server = ActionServer(self, LeftTurn, 'LeftTurn', execute_callback=self.execute_callback)
         # self.create_timer(0.1, self.publish_goal)
@@ -75,6 +75,15 @@ class LeftTurnNode(Node):
             euler = quat_to_euler([quat.x, quat.y, quat.z, quat.w])
             return euler[2]
 
+    def calc_angle(self,pt1, pt2):
+        dx = pt2[0] - pt1[0]
+        dy = pt2[1] - pt1[1]
+
+        if dx == 0 and dy == 0:
+            return 0.0
+        angle = math.atan2(dy, dx)
+        return angle
+
 
     def find_intersection_direction(self):
             self.get_logger().info("Searching for Intersection Direction")
@@ -107,7 +116,7 @@ class LeftTurnNode(Node):
             direction_y = bot_y - closest_lane_y
 
             angle = math.atan2(direction_y, direction_x)
-            direction = round(angle/90) * 90
+            direction = round(angle/(math.pi/2)) * (math.pi/2)
 
             bot_pose_x, bot_pose_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
             self.lane_offset = math.sqrt((bot_pose_x - closest_lane_x)**2 + (bot_pose_y- closest_lane_y)**2)
@@ -155,6 +164,10 @@ class LeftTurnNode(Node):
             cluster_points = yellow_lane_points[labels == cluster_label]
             if cluster_points.size<20:
                 continue
+            cluster_center = np.mean(cluster_points, axis=0)
+            angle = self.calc_angle(closest_point, cluster_center)
+            if angle < 0 :
+                continue
             
             lane2_cluster_label = cluster_label
             break
@@ -171,8 +184,8 @@ class LeftTurnNode(Node):
         x1, y1 = lane1_point[1], lane1_point[0]
         x2, y2 = lane2_point[1], lane2_point[0]
 
-        m1 = math.tan(direction)  
-        m2 = math.tan(direction + math.pi / 2)  
+        m1 = math.tan(direction + math.pi/2)  
+        m2 = math.tan(direction)  
 
         A1, B1, C1 = -m1, 1, -m1 * x1 + y1
         A2, B2, C2 = -m2, 1, -m2 * x2 + y2
@@ -184,8 +197,8 @@ class LeftTurnNode(Node):
 
         mid_x_world, mid_y_world = self.map_to_world(mid_x, mid_y)
 
-        goal_yaw = direction + math.pi / 3
-        self.perpendicular_direction = direction 
+        goal_yaw =  (direction + math.pi/2) + math.pi/3
+        self.perpendicular_direction = direction + math.pi/2
         
         self.Midpoint = PoseStamped()
         self.Midpoint.header.frame_id = 'map'
@@ -234,20 +247,12 @@ class LeftTurnNode(Node):
                 bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
 
                 if self.map_data[y, x] > 0:
-                    is_right = False
+                    
+                    angle = self.calc_angle((bot_x, bot_y), (x, y))
 
-                    if math.pi / 4 <= self.perpendicular_direction <= 3 * math.pi / 4:  
-                        is_right = (x < bot_x - 10) and (bot_y - 1 < y < bot_y + 1 ) 
-                    elif -3 * math.pi / 4 <= self.perpendicular_direction <= -math.pi / 4:  
-                        is_right = x > bot_x + 10 and (bot_y - 1 < y < bot_y + 1 )
-                    elif (-math.pi <= self.perpendicular_direction < -3 * math.pi / 4) or (3 * math.pi / 4 < self.perpendicular_direction <= math.pi):  
-                        is_right = y < bot_y - 10 and (bot_x - 1 < x < bot_x + 1 )
-                    elif -math.pi / 4 < self.perpendicular_direction < math.pi / 4:  
-                        is_right = y > bot_y + 10 and (bot_x - 1 < x < bot_x + 1 )
-
-                    if is_right:
-                        next_lane_point_x, next_lane_point_y = x, y
-                        break
+                    if abs(angle - (math.pi)) < 0.5:
+                        next_lane_point_x = x
+                        next_lane_point_y = y
 
                 for dx, dy in directions:
                     nx, ny = x + dx, y + dy
@@ -257,11 +262,8 @@ class LeftTurnNode(Node):
 
             if 0 <= next_lane_point_x < self.map_width and 0 <= next_lane_point_y < self.map_height:
 
-                perpendicular_direction_x = math.cos(self.perpendicular_direction)
-                perpendicular_direction_y = math.sin(self.perpendicular_direction)
-
-                offset_x = self.lane_offset * perpendicular_direction_x
-                offset_y = self.lane_offset * perpendicular_direction_y
+                offset_x = self.lane_offset * math.cos(self.perpendicular_direction)
+                offset_y = self.lane_offset * math.sin(self.perpendicular_direction)
 
                 goal_x = next_lane_point_x + offset_x
                 goal_y = next_lane_point_y + offset_y
@@ -275,7 +277,7 @@ class LeftTurnNode(Node):
                 self.final_goal.pose.position.y = goal_y_world
                 self.final_goal.pose.position.z = 0.0
 
-                quaternion = euler_to_quat([0, 0, self.perpendicular_direction + math.pi / 2])
+                quaternion = euler_to_quat([0, 0, self.perpendicular_direction + math.pi/2])
                 self.final_goal.pose.orientation.x = quaternion[0]
                 self.final_goal.pose.orientation.y = quaternion[1]
                 self.final_goal.pose.orientation.z = quaternion[2]

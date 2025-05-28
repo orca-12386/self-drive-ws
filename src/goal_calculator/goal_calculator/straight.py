@@ -34,8 +34,8 @@ class StraightActionServer(Node):
 
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
 
-        self.yellow_point = None
-        self.white_point = None
+        self.yellow_lane = None
+        self.white_lane = None
         self.initial_yellow_lane = None
         self.initial_white_lane = None
         self.center_point = None
@@ -48,7 +48,7 @@ class StraightActionServer(Node):
         self.white_map_data = None
         self.yellow_map_received = False
         self.white_map_received = False
-        self.max_visited_cells = 500
+        self.max_visited_cells = 10000
         self.current_goal_reached = True  
         
         self._goal_handle = None
@@ -83,7 +83,7 @@ class StraightActionServer(Node):
         if not self._action_completed:
             result.success = False
             goal_handle.abort()
-
+        
         return result
 
     def map_callback(self, msg):
@@ -121,6 +121,11 @@ class StraightActionServer(Node):
         self.bot_position = msg.pose.pose.position
         self.bot_orientation = msg.pose.pose.orientation
         
+        if not self.current_goal_reached and self.goal_pose is not None:
+            if self.goal_reached(self.goal_pose):
+                self.current_goal_reached = True
+                self.get_logger().info("Goal reached.")
+
     def world_to_map(self, x, y, origin, resolution):
         map_x = int((x - origin.position.x) / resolution)
         map_y = int((y - origin.position.y) / resolution)
@@ -134,6 +139,15 @@ class StraightActionServer(Node):
     def get_yaw_from_quaternion(self, quat):
         euler = tf_transformations.euler_from_quaternion([quat.x, quat.y, quat.z, quat.w])
         return euler[2]
+
+    def calc_angle(self, pt1, pt2):
+        dx = pt2[0] - pt1[0]
+        dy = pt2[1] - pt1[1]
+
+        if dx == 0 and dy == 0:
+            return 0.0
+        angle = math.atan2(dy, dx)
+        return angle
 
     def find_lane(self, map_data, map_width, map_height, lane_name, origin, resolution):
         if self.bot_position is None:
@@ -160,7 +174,14 @@ class StraightActionServer(Node):
                 continue
                 
             if map_data[y, x] > 0:
-                return (x, y)
+
+                angle = self.calc_angle((start_x, start_y), (x, y))
+                if lane_name == "Yellow":
+                    if (angle > math.pi/2 and angle < math.pi) or (angle < -math.pi/2 and angle > -math.pi):
+                        return (x, y)
+                elif lane_name == "White":
+                    if (angle < math.pi/2 and angle > 0) or (angle > -math.pi/2 and angle < 0):
+                        return (x, y)
 
             for dx, dy in directions:
                 nx, ny = x + dx, y + dy
@@ -170,7 +191,6 @@ class StraightActionServer(Node):
                     
                     if len(visited) > self.max_visited_cells:
                         return None
-
         return None
 
     def find_yellow_lane(self):
@@ -226,17 +246,18 @@ class StraightActionServer(Node):
         if self.goal_pose is not None:
             if self.goal_reached(self.goal_pose):
                 self.current_goal_reached = True
-                self.get_logger().info("Goal Reached")
         
-        if self.white_point is None:
-            self.white_point = self.find_white_lane()
-        if self.yellow_point is None:
-            self.yellow_point = self.find_yellow_lane()
+        if self.white_lane is None:
+            self.white_lane = self.find_white_lane()
+            self.get_logger().info(f"White Lane = {self.white_lane}")
+        if self.yellow_lane is None:
+            self.yellow_lane = self.find_yellow_lane()
+            self.get_logger().info(f"Yellow Lane = {self.yellow_lane}")
 
-        if self.white_point is not None and self.yellow_point is not None and self.center_point is None:
+        if self.white_lane is not None and self.yellow_lane is not None and self.center_point is None:
             self.center_point = (
-                (self.yellow_point[0] + self.white_point[0]) / 2,
-                (self.yellow_point[1] + self.white_point[1]) / 2
+                (self.yellow_lane[0] + self.white_lane[0]) / 2,
+                (self.yellow_lane[1] + self.white_lane[1]) / 2
             )
             self.get_logger().info(f"Center Point = {self.center_point}")
 
@@ -248,15 +269,8 @@ class StraightActionServer(Node):
             self.get_logger().warn("Center point is not defined. Cannot calculate goal.")
             return
 
-        self.goal_yaw = math.atan2(self.yellow_point[1] - self.white_point[1], self.yellow_point[0] - self.white_point[0]) - math.pi /2
-        self.goal_yaw = round(self.goal_yaw/90) * 90
-
-        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
-
-        orientation_offset = abs(bot_yaw - self.goal_yaw) 
-        if abs(orientation_offset-180) > 5:
-                self.goal_yaw = math.atan2(self.yellow_point[1] - self.white_point[1], self.yellow_point[0] - self.white_point[0]) + math.pi /2
-                self.goal_yaw = round(self.goal_yaw/90) * 90
+        self.goal_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        self.goal_yaw = round(self.goal_yaw / (math.pi / 2)) * (math.pi / 2)  
 
         goal_x = self.center_point[0] + self.offset * math.cos(self.goal_yaw)
         goal_y = self.center_point[1] + self.offset * math.sin(self.goal_yaw)
@@ -277,7 +291,7 @@ class StraightActionServer(Node):
         self.goal_pose.pose.orientation.z = orientation[2]
         self.goal_pose.pose.orientation.w = orientation[3]
 
-        self.get_logger().debug(f"New Goal Pose = ({goal_x}, {goal_y})")
+        self.get_logger().info(f"New Goal Pose = ({goal_x}, {goal_y})")
         self.current_goal_reached = False
 
     def goal_reached(self, goal_pose):
@@ -293,7 +307,7 @@ class StraightActionServer(Node):
     def publish_goal(self):
         if not self._action_running:
             return
-            
+        self.get_logger().info("Publishing goal pose")
         if self.goal_pose is not None:
             self.goal_publisher.publish(self.goal_pose)
             self.get_logger().debug(f"Publishing Goal Pose: {self.goal_pose.pose.position.x}, {self.goal_pose.pose.position.y}")
@@ -301,27 +315,27 @@ class StraightActionServer(Node):
 
     def monitor_lanes(self, goal_handle, result):
         while rclpy.ok() and self._action_running:
-            if self.white_point and self.yellow_point and goal_handle.is_active:
+            if self.white_lane and self.yellow_lane and goal_handle.is_active:
                 
-                new_white_point = self.find_white_lane()
-                new_yellow_point = self.find_yellow_lane()
+                new_white_lane = self.find_white_lane()
+                new_yellow_lane = self.find_yellow_lane()
 
-                if new_white_point and new_yellow_point:
+                if new_white_lane and new_yellow_lane:
                     white_distance = math.hypot(
-                        new_white_point[0] - self.white_point[0],
-                        new_white_point[1] - self.white_point[1]
+                        new_white_lane[0] - self.white_lane[0],
+                        new_white_lane[1] - self.white_lane[1]
                     )
                     yellow_distance = math.hypot(
-                        new_yellow_point[0] - self.yellow_point[0],
-                        new_yellow_point[1] - self.yellow_point[1]
+                        new_yellow_lane[0] - self.yellow_lane[0],
+                        new_yellow_lane[1] - self.yellow_lane[1]
                     )
-
-                    if white_distance > 3 and yellow_distance > 3:
-                        self.get_logger().info("Next Lane Reached.")
+                    # self.get_logger().info(f"White Lane Distance: {white_distance}, Yellow Lane Distance: {yellow_distance}")
+                    distance_threshold = 3
+                    if white_distance > distance_threshold and yellow_distance > distance_threshold:
+                        self.get_logger().info("Lane condition met. Sending action complete.")
                         self._action_completed = True
                         self._action_running = False
                         
-                        self.get_logger().info("Lane Keeping Action Completed")
                         result.success = True
                         goal_handle.succeed()                        
                         self.goal_pose = None
@@ -339,7 +353,7 @@ def main():
     try:
         executor.spin()
     except KeyboardInterrupt:
-        print("Keyboard Interrupt")
+        self.get_logger.warn("Keyboard Interrupt")
     finally:
         executor.shutdown()
         node.destroy_node()
