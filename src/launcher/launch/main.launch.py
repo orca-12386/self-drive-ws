@@ -28,6 +28,7 @@ def generate_launch_description():
             print(exc)
     
     SIM = config['sim']
+    ENABLE_DETECTION = config["detectors"]["enable"]
     DETECTION_MODE = config["detectors"]["mode"]
     ENABLE_GOALS = config["goal_calculator"]["enable"]
     ENABLE_BEHAVIOUR_MANAGER = config["behaviour_manager"]["enable"]
@@ -478,7 +479,7 @@ def generate_launch_description():
 
     if SIM:
         launch_description.extend(launch_world_robot)
-        launch_description.extend(pointcloud_sim_tf)
+        # launch_description.extend(pointcloud_sim_tf)
         launch_description.extend(launch_transforms)
     else:
         launch_description.extend(zed_tf)
@@ -498,16 +499,17 @@ def generate_launch_description():
     launch_description.extend(launch_map_ensemble)
     
     launch_description.extend(launch_detector_constant)
-    if DETECTION_MODE == 0:
-        launch_description.extend(launch_detector_model)
-    if DETECTION_MODE == 1:
-        launch_description.extend(launch_detector_height)
 
-    if ENABLE_GOALS:
-        launch_description.extend(launch_intersection_detector)    
-        launch_description.extend(launch_goal_calculators)
-        if ENABLE_BEHAVIOUR_MANAGER:
-            launch_description.extend(launch_behaviour_manager)
+    if ENABLE_DETECTION:
+        if DETECTION_MODE == 0:
+            launch_description.extend(launch_detector_model)
+        if DETECTION_MODE == 1:
+            launch_description.extend(launch_detector_height)
+        if ENABLE_GOALS:
+            launch_description.extend(launch_intersection_detector)    
+            launch_description.extend(launch_goal_calculators)
+            if ENABLE_BEHAVIOUR_MANAGER:
+                launch_description.extend(launch_behaviour_manager)
     
 
     return LaunchDescription(launch_description)

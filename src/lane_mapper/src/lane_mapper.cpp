@@ -143,10 +143,10 @@ public:
         grid_origin_x = -(WIDTH/2.0)*RESOLUTION;
         grid_origin_y = -(HEIGHT/2.0)*RESOLUTION;
 
-        z_threshold = 20;
+        z_threshold = 10;
         y_threshold = 0.1;
         
-        prob_mark = 0.5;
+        prob_mark = 0.55;
         log_odds_mark = prob_to_log_odds(prob_mark);
         prob_hit = 0.8;
         log_odds_hit = prob_to_log_odds(prob_hit);
@@ -155,7 +155,8 @@ public:
         prob_unknown = 0.5;
         log_odds_unknown = prob_to_log_odds(prob_unknown);
 
-        log_odds_clamp = 100;
+        log_odds_lower_clamp = prob_to_log_odds(0.12);
+        log_odds_upper_clamp = prob_to_log_odds(0.99);
 
         for(int i = 0;i<grid_height ;i++) {
             for(int j = 0;j<grid_width;j++) {
@@ -357,8 +358,11 @@ private:
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
                 instant_map_msg->data[index] = 100;
                 log_odds_map[index] += log_odds_hit;
-                if(abs(log_odds_map[index]) > log_odds_clamp) {
-                    log_odds_map[index] = (abs(log_odds_map[index])/log_odds_map[index])*5;    
+                if(log_odds_map[index] > log_odds_upper_clamp) {
+                    log_odds_map[index] = log_odds_upper_clamp;    
+                }
+                if(log_odds_map[index] < log_odds_lower_clamp) {
+                    log_odds_map[index] = log_odds_lower_clamp;
                 }
                 if(log_odds_map[index] >= log_odds_mark) {
                     full_map_msg->data[index] = 100;
@@ -497,7 +501,7 @@ private:
     std::shared_ptr<nav_msgs::msg::OccupancyGrid> instant_map_msg;
     std::shared_ptr<nav_msgs::msg::OccupancyGrid> full_map_msg;
     bool sim;
-    double log_odds_clamp;
+    double log_odds_lower_clamp, log_odds_upper_clamp;
 };
 
 
