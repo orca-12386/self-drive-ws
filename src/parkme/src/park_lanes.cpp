@@ -221,7 +221,6 @@ class ParkingActionServer : public rclcpp::Node {
                 
             if(log_angle > 2.0)
             {
-                RCLCPP_INFO(this->get_logger(),"Published Final goal near marker");
                 WorldPose farthest_white_wp = Utils::getWorldPoseFromMapPose(farthest_white_mp,current_map_white);
 
                 double angle = Utils::getAngleRadians(farthest_white_wp,current_pose_.world_pose);
@@ -236,15 +235,15 @@ class ParkingActionServer : public rclcpp::Node {
                     distance_angular = -distance_angular;   
                 
                 if(!parked)
-                    final_goal_pose = get_goal_infront(msg,100,distance_angular,&nearest_white_mp);
-                
+                {
+                    final_goal_pose = get_goal_infront(msg,100,distance_angular,&farthest_white_mp);
+                    RCLCPP_INFO(this->get_logger(),"Published Final goal near marker");  
+                    if(parking_mode == "parallel")
+                        theta += M_PI_2;
+                    general_goal(final_goal_pose,theta = theta);
+                }
                 parked = true;
                 WorldPose goal_pose_wp = Utils::getWorldPoseFromMapPose(final_goal_pose,current_map_white);
-
-                if(parking_mode == "parallel")
-                    theta += M_PI_2;
-
-                general_goal(final_goal_pose,theta = theta);
     
                 double goal_dist = Utils::worldDistance(current_pose_.world_pose,goal_pose_wp);
                 
@@ -296,7 +295,7 @@ class ParkingActionServer : public rclcpp::Node {
                 );
             
                 farthest_white_mp =
-                    Utils::exploreLane(nearest_white_mp, current_map_white);
+                    Utils::exploreLaneExtended(nearest_white_mp, current_map_white,(int)(1.5/current_grid_->info.resolution));
     
                 WorldPose nearest_white_wp = Utils::getWorldPoseFromMapPose(nearest_white_mp,current_map_white);
                 WorldPose farthest_white_wp = Utils::getWorldPoseFromMapPose(farthest_white_mp,current_map_white);
@@ -420,13 +419,6 @@ class ParkingActionServer : public rclcpp::Node {
         }
     };
     
-    // int main(int argc, char** argv) {
-    //     rclcpp::init(argc, argv);
-    //     std::cout<<"Parking Node Initialized"<<std::endl;
-    //     rclcpp::spin(std::make_shared<ParkingActionServer>());
-    //     rclcpp::shutdown();
-    //     return 0;
-    // }
 }
     RCLCPP_COMPONENTS_REGISTER_NODE(parkme::ParkingActionServer)
     

@@ -117,10 +117,6 @@ class ParkingActionServer : public rclcpp::Node {
             auto result = std::make_shared<Parking::Result>();
     
             park_request = true;
-            // Check if goal is done
-            if (rclcpp::ok() && parked) {
-
-            }
           }
         
         void grid_callback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
@@ -252,8 +248,8 @@ class ParkingActionServer : public rclcpp::Node {
                 current_pose_.map_pose, current_map_white, 100, 100
             );
 
-            auto explore_lane = Utils::exploreLane(
-                nearest_white_mp,current_map_white);
+            auto explore_lane = Utils::exploreLaneExtended(
+                nearest_white_mp,current_map_white,(int)(1.5/current_grid_->info.resolution));
             
             if(nearest_white_mp.x != -1)
                 RCLCPP_INFO(this->get_logger(),"Got lanes %d",explore_lane.cells_covered);
@@ -272,11 +268,16 @@ class ParkingActionServer : public rclcpp::Node {
                     distance_angular = -distance_angular;   
 
                 if(!parked)
+                {   
+                    RCLCPP_INFO(this->get_logger(),"Publishing Final Goal");
                     final_goal_pose = get_goal_infront(msg,100,distance_angular,&nearest_white_mp);
-                
+                    if(parking_mode == "parallel")
+                        theta += M_PI_2;
+                    general_goal(final_goal_pose,theta = theta);
+                }
                 parked = true;
                 WorldPose goal_pose_wp = Utils::getWorldPoseFromMapPose(final_goal_pose,current_map_white);
-                general_goal(final_goal_pose,theta = theta + M_PI_2);
+                
     
                 double goal_dist = Utils::worldDistance(current_pose_.world_pose,goal_pose_wp);
                 if(goal_dist < 0.2)
@@ -404,14 +405,6 @@ class ParkingActionServer : public rclcpp::Node {
                    cell.y >= 0 && cell.y < (int)current_grid_->info.height;
         }
     };
-    
-    // int main(int argc, char** argv) {
-    //     rclcpp::init(argc, argv);
-    //     std::cout<<"Parking Node Initialized"<<std::endl;
-    //     rclcpp::spin(std::make_shared<ParkingActionServer>());
-    //     rclcpp::shutdown();
-    //     return 0;
-    // }
 }
     RCLCPP_COMPONENTS_REGISTER_NODE(parkme::ParkingActionServer)
     
