@@ -17,6 +17,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 find_package(interfaces REQUIRED)
 find_package(topic_remapper REQUIRED)
@@ -50,6 +51,25 @@ target_include_directories(behaviour_manager_node PRIVATE
 # Install the executable
 install(TARGETS
   behaviour_manager_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+
+add_executable(in_lane
+  src/in_lane.cpp
+)
+
+ament_target_dependencies(in_lane
+  rclcpp
+  nav_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  visualization_msgs
+)
+
+install(TARGETS
+  in_lane
   DESTINATION lib/${PROJECT_NAME}
 )
 
