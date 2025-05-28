@@ -369,8 +369,8 @@ private:
         std::array<int, 2> best_point = {src_x, src_y};
         double best_angle = -1.0;
         
-        const int search_radius = static_cast<int>(5 * cached_resolution_inv); // 5m radius
-        const int step_size = std::max(1, static_cast<int>(0.2 * cached_resolution_inv)); // 0.2m steps
+        const int search_radius = static_cast<int>(4 * cached_resolution_inv); // 5m radius
+        const int step_size = std::max(1, static_cast<int>(0.1 * cached_resolution_inv)); // 0.1m steps
         
         // Spiral search pattern for better coverage with fewer points
         for (int r = step_size; r <= search_radius; r += step_size) {

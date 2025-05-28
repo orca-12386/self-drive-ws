@@ -28,103 +28,8 @@
 #include <unordered_set>
 #include <functional>
 
+#include "utils.cpp"
 
-/*
-Detection
-
-edge
-current
-adjacent
-
-find distance to white lane, yellow lane
-get difference
-classify
-*/
-
-bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& dst) {
-    if (!map || map->data.empty()) {
-        return false;
-    }
-    
-    std::unordered_set<uint64_t> visited;
-    auto hash_coords = [](const std::array<int, 2>& coords) {
-        return (static_cast<uint64_t>(coords[0]) << 32) | static_cast<uint64_t>(coords[1]);
-    };
-    
-    std::queue<std::array<int, 2>> q;
-    std::array<int, 2> p;
-    std::array<std::array<int, 2>, 4> neighbours;
-    
-    q.push(src);
-    visited.insert(hash_coords(src));
-    
-    while(!q.empty()) {
-        p = q.front();
-        q.pop();
-        
-        if(p[0] < 0 || p[0] >= static_cast<int>(map->info.width) || 
-           p[1] < 0 || p[1] >= static_cast<int>(map->info.height)) {
-            continue;
-        }
-        
-        size_t index = p[1] * map->info.width + p[0];
-        if(index >= map->data.size()) {
-            continue;
-        }
-        
-        if(map->data[index] > 0) {
-            dst = p;
-            return true;
-        }
-        
-        if(sqrt(pow(p[0]-src[0],2) + pow(p[1]-src[1],2)) > 10/map->info.resolution) {
-            return false;
-        }
-        
-        neighbours[0] = {p[0]+1, p[1]};
-        neighbours[1] = {p[0], p[1]+1};
-        neighbours[2] = {p[0]-1, p[1]};
-        neighbours[3] = {p[0], p[1]-1};
-        
-        for(int i=0; i<4; i++) {
-            if(neighbours[i][0] >= static_cast<int>(map->info.width) || neighbours[i][0] < 0 ||
-               neighbours[i][1] >= static_cast<int>(map->info.height) || neighbours[i][1] < 0) {
-                continue;
-            }
-            
-            if(visited.find(hash_coords(neighbours[i])) == visited.end()) {
-                q.push(neighbours[i]);
-                visited.insert(hash_coords(neighbours[i]));
-            }
-        }
-    }
-    return false;
-}
-
-double get_distance_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, double& distance) {
-    std::array<int, 2> dst;
-    bool status = get_nearest_point_bfs(src, map, dst);
-    if(status) {
-        distance = std::sqrt(pow(src[0]-dst[0], 2)+pow(src[1]-dst[1], 2)) * map->info.resolution;
-    }
-    return status;
-}
-
-double calculate_slope(std::array<int, 2> p1, std::array<int, 2> p2) {
-    if (p2[0]-p1[0] == 0) {
-        return 1e9;
-    } else {
-        return (p2[1]-p1[1])/(p2[0]-p1[0]);
-    }
-}
-
-bool check_in_between(std::array<int, 2> p0, std::array<int, 2> p1, std::array<int, 2> p2, double slope) {
-    double c1 = p1[1] - slope * p1[0];
-    double c2 = p2[1] - slope * p2[0];
-    double d1 = slope * p0[0] - p0[1] + c1;
-    double d2 = slope * p0[0] - p0[1] + c2;
-    return d1 * d2 <= 0;
-}
 
 bool convert_to_grid(const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<double, 3> world_coords, std::array<int, 2>& grid_coords) {
     if(!map) {
@@ -138,6 +43,109 @@ bool convert_to_grid(const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::arr
     return (0<=grid_x && grid_x < map->info.width && 0<=grid_y && grid_y < map->info.height);
 }
 
+namespace LaneChecker {
+    Map current_map;
+    BotPose current_pose;
+    BotPose prev_pose;
+    bool got_map;
+    bool got_odom;
+
+    void update_map(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
+        got_map = true;
+
+        current_map.height = msg->info.height;
+        current_map.width = msg->info.width;
+        current_map.resolution = msg->info.resolution;
+        current_map.origin.x = msg->info.origin.position.x;
+        current_map.origin.y = msg->info.origin.position.y;
+
+        current_map.grid.resize(current_map.height,
+                                std::vector<int>(current_map.width, -1));
+
+        for (int y = 0; y < current_map.height; y++) {
+            for (int x = 0; x < current_map.width; x++) {
+                int index = y * current_map.width + x;
+                current_map.grid[y][x] = msg->data[index];
+            }
+        }
+    }
+
+    void update_odom(const nav_msgs::msg::Odometry::SharedPtr msg) {
+        current_pose.world_pose.x = msg->pose.pose.position.x;
+        current_pose.world_pose.y = msg->pose.pose.position.y;
+
+        tf2::Quaternion q(
+            msg->pose.pose.orientation.x, msg->pose.pose.orientation.y,
+            msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+
+        double roll, pitch, yaw;
+        tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+        current_pose.roll = roll;
+        current_pose.pitch = pitch;
+        current_pose.yaw = yaw;
+
+        if (got_map) {
+            current_pose.map_pose =
+            Utils::getMapPoseFromWorldPose(current_pose.world_pose, current_map);
+        }
+
+        if (!got_odom || Utils::worldDistance(current_pose.world_pose, prev_pose.world_pose)) {
+            prev_pose = current_pose;
+        }
+
+        got_odom = true;
+    }
+
+    bool checkInLane(WorldPose obs_pose) {
+        double theta;
+        if (Utils::worldDistance(current_pose.world_pose, prev_pose.world_pose) <
+            0.1) {
+            theta = current_pose.yaw;
+        } else {
+            theta =
+                Utils::getAngleRadians(prev_pose.world_pose, current_pose.world_pose);
+        }
+
+        Utils::removeMapBehindBot(current_map, current_pose.world_pose, theta, 20, 20);
+
+        MapPose nearest_lane_mp = Utils::findClosestForValue(current_pose.map_pose, current_map, 300, 100);
+        MapPose farthest_lane_mp = Utils::exploreLane(nearest_lane_mp, current_map, 100);
+
+        WorldPose pt1 = Utils::getWorldPoseFromMapPose(nearest_lane_mp, current_map);
+        WorldPose pt2 = Utils::getWorldPoseFromMapPose(farthest_lane_mp, current_map);
+
+        // publishMarkers(pt1, pt2);
+
+        float dx = pt2.x - pt1.x;
+        float dy = pt2.y - pt1.y;
+
+        // Line equation: Ax + By + C = 0
+        float A = dy;
+        float B = -dx;
+        float C = dx * pt1.y - dy * pt1.x;
+
+        float d1 = std::abs(A * obs_pose.x + B * obs_pose.y + C) / std::sqrt(A * A + B * B);
+        if (d1 < 0.5) {
+            // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), "too close to the lane");
+            return false;   
+        }
+
+        float d2 = std::abs(A * current_pose.world_pose.x + B * current_pose.world_pose.y + C) / std::sqrt(A * A + B * B);
+
+        // Side of the line (sign of the equation without abs)
+        float side1 = A * current_pose.world_pose.x + B * current_pose.world_pose.y + C;
+        float side2 = A * current_pose.world_pose.x + B * current_pose.world_pose.y + C;
+
+        bool close_enough = std::abs(d1 - d2) <= 2.0;
+        bool same_side = (side1 * side2) >= 0;  // both same sign or zero
+
+        // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), "d1: %.2f, d2: %.2f, same_side: %s", d1, d2, same_side ? "true" : "false");
+
+        return close_enough && same_side;
+    }
+}
+
 class Detection {
 public:
     Detection(std::array<double, 3> detection_location, std::array<double, 3> robot_location) {
@@ -146,8 +154,6 @@ public:
         this->distance = calculate_distance(robot_location);
         this->action = false;
         this->current = false;
-        this->edge = false;
-        this->adjacent = false;
     }
 
     std::string to_string() {
@@ -155,12 +161,8 @@ public:
         std::string o1(std::string("Distance: ")+std::to_string(this->distance));
         std::string o2(std::string("Action: ")+std::to_string(this->action));
         std::string o3(std::string("Current: ")+std::to_string(this->current));
-        std::string o4(std::string("Adjacent: ")+std::to_string(this->adjacent));
-        std::string o5(std::string("Edge: ")+std::to_string(this->edge));
-        std::string o6(std::string("Distance to white lane: ")+std::to_string(this->wd));
-        std::string o7(std::string("Distance to yellow lane: ")+std::to_string(this->yd));
         std::string nl("\n");
-        return o0+nl+o1+nl+o2+nl+o3+nl+o4+nl+o5+nl+o6+nl+o7+nl;
+        return o0+nl+o1+nl+o2+nl+o3+nl;
     }
 
     void set_locations(std::array<double, 3> detection_location, std::array<double, 3> robot_location) {
@@ -197,33 +199,12 @@ public:
         return convert_to_grid(map, detection_location, grid_coords);
     }
 
-    bool check_area(const nav_msgs::msg::OccupancyGrid::SharedPtr near_map, const nav_msgs::msg::OccupancyGrid::SharedPtr yellow_map, std::array<double, 3> odometry_location) {
-        std::array<int, 2> detection_grid, p1, p2, p3, odom_grid;
-        bool grid_status = this->get_grid_coords(near_map, detection_grid);
-        if(!grid_status) {
-            RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("detection location ")+std::to_string(detection_location[0])+std::string(",")+std::to_string(detection_location[1])+std::to_string(detection_location[2])).c_str());
-            RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), (std::string("grid coords not in bounds behaviour_manager ")+std::to_string(detection_grid[0])+std::string(",")+std::to_string(detection_grid[1])).c_str());
-            return false;
-        }
-        convert_to_grid(near_map, odometry_location, odom_grid);
-        get_nearest_point_bfs(odom_grid, near_map, p1);
-        get_nearest_point_bfs(detection_grid, near_map, p2);
-        get_nearest_point_bfs(odom_grid, yellow_map, p3);
-        double m = calculate_slope(p1, p2);
-        this->current = check_in_between(detection_grid, p1, p3, m);
-
-        bool swd = get_distance_bfs(detection_grid, near_map, wd);
-        if(swd) {
-            if(wd<0.5) {
-                this->current = false;
-            }            
-        }
-        this->edge = !this->current;
-        return true;
+    void check_area() {
+        WorldPose obs_pos = WorldPose(detection_location[0], detection_location[1]);
+        this->current = LaneChecker::checkInLane(obs_pos);
     }
     
-    bool edge, adjacent, current;
-    double wd, yd;
+    bool current;
     bool action;
     double distance;
     std::array<double, 3> robot_location;
@@ -314,6 +295,7 @@ private:
             }
             prev_detection->robot_location = odometry_location;
             prev_detection->distance = prev_detection->calculate_distance(odometry_location);
+            prev_detection->check_area();
             return; 
         }
         
@@ -322,25 +304,9 @@ private:
             return;
         }
 
-        bool area_status = det->check_area(near_map, yellow_map, odometry_location);
-        bool current_or_edge = det->current || det->edge;
-
-        bool conditions = true;
-        conditions = conditions && is_not_previous_detection;
-        conditions = conditions && area_status;
-        conditions = conditions && current_or_edge;
-
-        if(!area_status) {
-            RCLCPP_INFO(node->get_logger(), "area_status false");
-        }
-        if(!current_or_edge) {
-            RCLCPP_INFO(node->get_logger(), "edge and current conditions not satisfied");
-        }
-
-        if(conditions) {
-            add_detection(std::move(det));
-            RCLCPP_INFO(node->get_logger(), (std::string("Added new detection: ") + topic).c_str());
-        }
+        det->check_area();
+        add_detection(std::move(det));
+        RCLCPP_INFO(node->get_logger(), (std::string("Added new detection: ") + topic).c_str());
     }
 
     void rotate_coords(std::array<double, 3>& p, double yaw) {
@@ -914,24 +880,26 @@ private:
 
     void full_course() {
         if(is_detected.at("stop_sign")) {
-            stop_intersection_action();
-            if(check_intersection()) {
-                if(current_turn_index >= turn_sequence.size()) {
-                    rclcpp::shutdown();
-                }
-                switch(turn_sequence[current_turn_index]) {
-                    case 0:
-                        straight_turn_action();
-                        break;
-                    case 1:
-                        right_turn_action();
-                        break;
-                    case 2:
-                        left_turn_action();
-                        break;
-                }
-                current_turn_index++;
-            } 
+            if(!detections["stop_sign"]->current) {
+                stop_intersection_action();
+                if(check_intersection()) {
+                    if(current_turn_index >= turn_sequence.size()) {
+                        rclcpp::shutdown();
+                    }
+                    switch(turn_sequence[current_turn_index]) {
+                        case 0:
+                            straight_turn_action();
+                            break;
+                        case 1:
+                            right_turn_action();
+                            break;
+                        case 2:
+                            left_turn_action();
+                            break;
+                    }
+                    current_turn_index++;
+                } 
+            }
         } else if(is_detected.at("pedestrian")) {
             if(detections["pedestrian"]->current) {
                 stop_in_lane_action();
@@ -1109,11 +1077,15 @@ private:
         tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
         this->odometry_yaw = yaw;
         this->odometry_recv = true;
+
+        LaneChecker::update_odom(msg);
     }
 
     void nearMapCallback(nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         near_map_msg = msg;
         near_map_recv = true;
+        
+        LaneChecker::update_map(msg);
     } 
 
     void yellowMapCallback(nav_msgs::msg::OccupancyGrid::SharedPtr msg) {

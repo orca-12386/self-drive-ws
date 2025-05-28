@@ -85,7 +85,7 @@ private:
   
   geometry_msgs::msg::PoseStamped current_goal_;
   bool goal_reached_ = false;
-  const double goal_threshold_ = 0.2;  
+  const double goal_threshold_ = 0.35;  
 
   void map1_callback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
   {
@@ -182,14 +182,14 @@ private:
     );
 
     MapPose nearest_yellow_mp = Utils::findClosestForValue(
-        current_pose.map_pose, current_map_yellow, 150, 100
+        current_pose.map_pose, current_map_yellow, 300, 100
     );
 
     MapPose farthest_yellow_mp =
         Utils::exploreLane(nearest_yellow_mp, current_map_yellow);
 
     MapPose first_white_mp = Utils::findClosestForValue(
-        farthest_yellow_mp, current_map_white, 100, 100
+        farthest_yellow_mp, current_map_white, 300, 100
     );
 
     if(first_white_mp.x == -1 && first_white_mp.y == -1) {
@@ -213,8 +213,8 @@ private:
       white_mp = current;  // last valid pixel
 
       // Search a 5x5 neighborhood
-      for (int dx = -5; dx <= 5; ++dx) {
-        for (int dy = -5; dy <= 5; ++dy) {
+      for (int dx = -10; dx <= 10; ++dx) {
+        for (int dy = -10; dy <= 10; ++dy) {
           int nx = current.x + dx;
           int ny = current.y + dy;
 
