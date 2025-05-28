@@ -276,7 +276,7 @@ class LaneChange(Node):
         
         # Calculate angular difference
         angular_diff = abs(self.normalize_angle(current_yaw - goal_yaw))
-        angular_threshold = Config.config.get("goal_angular_threshold", 0.1)  # ~11 degrees
+        angular_threshold = Config.config.get("goal_angular_threshold", 0.2)  # ~11 degrees
         orientation_ok = angular_diff < angular_threshold
         
         return distance_ok and orientation_ok
@@ -421,8 +421,8 @@ class LaneChange(Node):
 
                     
             last_point = find_furthest_point(closest_cluster, first_point)
-            furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 30)
-            furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 30)
+            furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 15)
+            furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 15)
             furthest_point1_global = self.convert_grid_to_global(furthest_point1)
             furthest_point2_global = self.convert_grid_to_global(furthest_point2)
             self.publish_furthest_points(furthest_point1_global, furthest_point2_global)
@@ -432,10 +432,10 @@ class LaneChange(Node):
             furthest_point = furthest_point1 if angle1 > angle2 else furthest_point2
             distance = util.calculate_distance(furthest_point, robot_coords_grid)
             NodeGlobal.log_info(f"distance to lane {distance}")
-            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], 92)
+            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], 89)
             # distance_lane2_bot = util.calculate_distance(robot_coords_grid, first_point2)
             # distance_goal_bot = util.calculate_distance(robot_coords_grid, first_point)
-            goal_coords = np.array(self.convert_grid_to_global(goal_point)
+            goal_coords = np.array(self.convert_grid_to_global(goal_point))
             # if distance_goal_bot < 0.001:
             #     NodeGlobal.log_warn("Goal point too close to robot, using direct point")
             #     goal_coords = np.array(util.convert_to_global_coords(first_point))
