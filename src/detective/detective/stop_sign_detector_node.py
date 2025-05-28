@@ -46,6 +46,15 @@ class StopSignDetector(BaseDetector):
     def odom_callback(self, msg):
         self.bot_position = msg.pose.pose.position
         self.bot_orientation = msg.pose.pose.orientation
+
+        try:
+            self.transfoerm_stamped = self.tf_buffer.lookup_transform("map", self.depth_frame_id, self.depth_stamp)
+        except tf2_ros.TransformException as e:
+            self.get_logger().error(f"Transform lookup failed: {e}")
+            return
+
+        self.detect_objects()
+        self.calculate_object_position()
     
     def detect_objects(self):
         if self.latest_image is None:
@@ -131,18 +140,10 @@ class StopSignDetector(BaseDetector):
                         self.detected_point.point.x = self.bot_position.x + point.x * sin(bot_yaw) + point.y * cos(bot_yaw)
                         self.detected_point.point.y = self.bot_position.y + point.y * sin(bot_yaw) - point.x * cos(bot_yaw) 
                         self.detected_point.point.z = - point.z
-
-                        if self.detected_point.point.z > 1:
-                            self.get_logger().info("Detected point height is too high(prolly the sky).")
-                            return 
                         
                         self.point_pub.publish(point)
                         self.pointstamped_pub.publish(self.detected_point)
-                        self.get_logger().info(f"Detected Pothole: {self.detected_point.point}")
-                
-                if point:
-                    self.point_pub.publish(point)
-                    self.get_logger().info(f"Stop Sign Distance: {point}")
+                        self.get_logger().info(f"Detected Stop Sign: {self.detected_point.point}")
             
             self.object_coords = None
         except Exception as e:

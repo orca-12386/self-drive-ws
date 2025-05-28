@@ -200,6 +200,8 @@ class PotholeDetector(BaseDetector):
                         self.point_pub.publish(point)
                         self.pointstamped_pub.publish(self.detected_point)
                         self.get_logger().info(f"Detected Pothole: {self.detected_point.point}")
+
+            self.object_coords = None
                     
         except Exception as e:
             self.get_logger().error(f"Position calculation error: {e}")
