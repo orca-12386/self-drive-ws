@@ -89,6 +89,7 @@ class LaneChange(Node):
         Publisher.create_publishers(publisher_info)
 
         self.lane_change_active = False
+        self.lane_change_type = 1
         self.publish_status(False)
         self.goals = list()
         self.timer = self.create_timer(0.1, self.publish_status_periodically)
@@ -122,6 +123,7 @@ class LaneChange(Node):
             curr_coords = self.get_robot_coords_global()
             if curr_coords and self.goal_reached(curr_coords, self.current_goal_pose):
                 self.lane_change_active = False
+                self.lane_change_type = 1
                 self.current_goal_pose = None
                 self.publish_status(False)
                 return
@@ -194,13 +196,14 @@ class LaneChange(Node):
 
     def goal_callback(self, goal_request):
         self.get_logger().info(f"Received goal request: lane_change = {goal_request.data}")
-        if goal_request.data == 1:
+        if goal_request.data in [1, 2]:
             if self.latest_map_msg is None or self.latest_odom_msg is None:
                 self.get_logger().error("Cannot accept lane change - missing map or odometry data")
                 return GoalResponse.REJECT
                 
             self.get_logger().info("Lane change action received")
             self.lane_change_active = True
+            self.lane_change_type = goal_request.data
             return GoalResponse.ACCEPT
         else:
             return GoalResponse.REJECT
@@ -239,6 +242,7 @@ class LaneChange(Node):
                 if self.goal_reached(curr_coords, goal_pose):
                     NodeGlobal.log_info("Lane change complete.")
                     self.lane_change_active = False
+                    self.lane_change_type = 1
                     self.publish_status(False)
                     self.current_goal_pose = None
                     goal_handle.succeed()
@@ -421,8 +425,12 @@ class LaneChange(Node):
 
                     
             last_point = find_furthest_point(closest_cluster, first_point)
-            furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 15)
-            furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 15)
+            if (self.lane_change_type == 1):
+                furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 30)
+                furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 30)
+            else:
+                furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 15)
+                furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 15)
             furthest_point1_global = self.convert_grid_to_global(furthest_point1)
             furthest_point2_global = self.convert_grid_to_global(furthest_point2)
             self.publish_furthest_points(furthest_point1_global, furthest_point2_global)
@@ -432,7 +440,10 @@ class LaneChange(Node):
             furthest_point = furthest_point1 if angle1 > angle2 else furthest_point2
             distance = util.calculate_distance(furthest_point, robot_coords_grid)
             NodeGlobal.log_info(f"distance to lane {distance}")
-            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], 89)
+            if (self.lane_change_type == 2):
+                goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], 90)
+            else:
+                goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], 80)
             # distance_lane2_bot = util.calculate_distance(robot_coords_grid, first_point2)
             # distance_goal_bot = util.calculate_distance(robot_coords_grid, first_point)
             goal_coords = np.array(self.convert_grid_to_global(goal_point))
