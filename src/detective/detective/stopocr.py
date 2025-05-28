@@ -11,6 +11,8 @@ import numpy as np
 import easyocr
 import tf2_ros
 import tf2_geometry_msgs
+from math import sin, cos
+from scipy.spatial.transform import Rotation
 
 def euler_to_quat(euler):
     return Rotation.from_euler('xyz', euler).as_quat()
@@ -49,7 +51,7 @@ class TextDetectorNode(Node):
         self.get_logger().info("TextDetectorNode initialized")
 
     
-    def pixel_to_point(self, x, y, depth):
+    def pixel_to_point(self, u, v, depth):
         if self.camera_info is None or depth is None:
             return None
         
@@ -68,12 +70,12 @@ class TextDetectorNode(Node):
         if self.bot_position is None or self.bot_orientation is None:
             return None
 
-        euler = self.quat_to_euler([self.bot_orientation.x, self.bot_orientation.y, self.bot_orientation.z, self.bot_orientation.w])
+        euler = quat_to_euler([self.bot_orientation.x, self.bot_orientation.y, self.bot_orientation.z, self.bot_orientation.w])
         bot_yaw = euler[2]
 
         x = self.bot_position.x + point.x * sin(bot_yaw) + point.y * cos(bot_yaw)
         y = self.bot_position.y + point.y * sin(bot_yaw) - point.x * cos(bot_yaw)
-        z = -point.z
+        z = point.z
  
         return Point(x=float(x), y=float(y), z=float(z))
 
@@ -168,7 +170,7 @@ class TextDetectorNode(Node):
                     self.detected_point.point.z = point.z
 
                     self.position_publisher.publish(self.detected_point)
-                    self.get_logger().info(f"Detected Stop Sign: {self.detected_point.x}, {self.detected_point.y}, {self.detected_point.z}")
+                    self.get_logger().info(f"Detected Stop Sign: {self.detected_point.point.x}, {self.detected_point.point.y}, {self.detected_point.point.z}")
                 break  
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8"))
 
