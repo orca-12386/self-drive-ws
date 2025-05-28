@@ -9,13 +9,13 @@ TebLocalPlannerROS:
   feasibility_check_no_poses: 5
 
   # Robot
-  max_vel_x: 0.6
+  max_vel_x: 1.0
   max_vel_x_backwards: 0.4
   max_vel_y: 0.0 # For a differential drive robot
   max_vel_theta: 0.5
   acc_lim_x: 0.5
   acc_lim_y: 0.0 # For a differential drive robot
-  acc_lim_theta: 0.5
+  acc_lim_theta: 1.0
   min_turning_radius: 0.0
 
   footprint_model:
@@ -42,16 +42,16 @@ TebLocalPlannerROS:
   optimization_activate: True
   optimization_verbose: False
   penalty_epsilon: 0.1
-  # weight_max_vel_x: 50.0
-  # weight_max_vel_theta: 20.0
-  # weight_acc_lim_x: 50.0
-  # weight_acc_lim_theta: 10.0
+  weight_max_vel_x: 5.0
+  weight_max_vel_theta: 1.0
+  weight_acc_lim_x: 5.0
+  weight_acc_lim_theta: 1.0
   weight_kinematics_nh: 1000.0 # Non-holonomic kinematics weight
-  # weight_kinematics_forward_drive: 30.0
-  # weight_optimaltime: 40.0
-  # weight_obstacle: 50.0
-  # weight_inflation: 40.0
-  # weight_viapoint: 30.0
+  weight_kinematics_forward_drive: 30.0
+  weight_optimaltime: 40.0
+  weight_obstacle: 50.0
+  weight_inflation: 40.0
+  weight_viapoint: 30.0
 
   # Homotopy Class Planning
   enable_homotopy_class_planning: True
