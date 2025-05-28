@@ -126,7 +126,7 @@ namespace LaneChecker {
         float C = dx * pt1.y - dy * pt1.x;
 
         float d1 = std::abs(A * obs_pose.x + B * obs_pose.y + C) / std::sqrt(A * A + B * B);
-        if (d1 < 0.5) {
+        if (d1 < 1) {
             // RCLCPP_INFO(rclcpp::get_logger("behaviour_manager"), "too close to the lane");
             return false;   
         }
@@ -295,7 +295,11 @@ private:
             }
             prev_detection->robot_location = odometry_location;
             prev_detection->distance = prev_detection->calculate_distance(odometry_location);
+            bool earlier = prev_detection->current;
             prev_detection->check_area();
+            if(earlier != prev_detection->current) {
+                RCLCPP_INFO(node->get_logger(), prev_detection->to_string().c_str());
+            }
             return; 
         }
         
@@ -305,8 +309,9 @@ private:
         }
 
         det->check_area();
-        add_detection(std::move(det));
         RCLCPP_INFO(node->get_logger(), (std::string("Added new detection: ") + topic).c_str());
+        RCLCPP_INFO(node->get_logger(), det->to_string().c_str());
+        add_detection(std::move(det));
     }
 
     void rotate_coords(std::array<double, 3>& p, double yaw) {

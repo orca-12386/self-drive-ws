@@ -162,6 +162,10 @@ public:
       Map &map, const WorldPose &bot_pose, double angle, int height_to_remove,
       int width_to_remove
   ) {
+    while (angle > M_PI)
+    angle -= 2 * M_PI;
+    while (angle < -M_PI)
+    angle += 2 * M_PI;
 
     auto process_rows = [&](int start_y, int end_y) {
       for (int y = start_y; y < end_y; y++) {
