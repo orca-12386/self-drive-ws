@@ -60,6 +60,7 @@ class LaneChange(Node):
         self.latest_odom_msg = None
         self.odom_history = []
         self.max_odom_history = 20
+        self.current_goal_pose = None
         
         self.map_subscription = self.create_subscription(
             OccupancyGrid,
@@ -92,6 +93,7 @@ class LaneChange(Node):
         self.goals = list()
         self.timer = self.create_timer(0.1, self.publish_status_periodically)
         self.timer2 = self.create_timer(2, self.add_goal_pose)
+        self.goal_timer =self.create_timer(0.2, self.pub_goal_periodically)
         self.furthest1_pub = self.create_publisher(PoseStamped, '/furthest_point1_global', 10)
         self.furthest2_pub = self.create_publisher(PoseStamped, '/furthest_point2_global', 10)
 
@@ -114,6 +116,16 @@ class LaneChange(Node):
                 curr_coords = self.get_robot_coords_global()
                 if curr_coords and self.goal_reached(curr_coords, self.current_goal_pose):
                     NodeGlobal.log_info("Goal reached!")
+    
+    def pub_goal_periodically(self):
+        if self.lane_change_active and self.current_goal_pose is not None:
+            curr_coords = self.get_robot_coords_global()
+            if curr_coords and self.goal_reached(curr_coords, self.current_goal_pose):
+                self.lane_change_active = False
+                self.current_goal_pose = None
+                self.publish_status(False)
+                return
+            Publisher.pubs["goal_pose"].publish(self.current_goal_pose)
     
     def get_robot_coords_global(self):
         if self.latest_odom_msg is None:
@@ -241,15 +253,46 @@ class LaneChange(Node):
             return LaneChangeAction.Result()
 
     def goal_reached(self, curr_robot_coords, goal_pose):
+        # Distance check (existing)
         goal_coords = (goal_pose.pose.position.x, goal_pose.pose.position.y)
         distance = util.calculate_distance(curr_robot_coords, goal_coords)
-        # Using a configurable threshold would be better
         distance_threshold = Config.config.get("goal_distance_threshold", 1.0)
-        return distance < distance_threshold
+        distance_ok = distance < distance_threshold
+        
+        # Orientation check (new)
+        if not distance_ok:
+            return False
+        
+        # Get current robot orientation
+        # if self.latest_odom_msg is None:
+        #     return distance_ok  # Fall back to distance only if no odometry
+        
+        current_yaw = get_yaw_from_odometry(self.latest_odom_msg)
+        
+        # Get goal orientation
+        goal_quat = goal_pose.pose.orientation
+        goal_rotation = R.from_quat([goal_quat.x, goal_quat.y, goal_quat.z, goal_quat.w])
+        _, _, goal_yaw = goal_rotation.as_euler('xyz', degrees=False)
+        
+        # Calculate angular difference
+        angular_diff = abs(self.normalize_angle(current_yaw - goal_yaw))
+        angular_threshold = Config.config.get("goal_angular_threshold", 0.1)  # ~11 degrees
+        orientation_ok = angular_diff < angular_threshold
+        
+        return distance_ok and orientation_ok
+
+    def normalize_angle(self, angle):
+        """Normalize angle to [-pi, pi] range"""
+        while angle > math.pi:
+            angle -= 2 * math.pi
+        while angle < -math.pi:
+            angle += 2 * math.pi
+        return angle
+
 
     def create_goal_pose(self, goal):
         goal_pose = PoseStamped()
-        goal_pose.header.frame_id = "odom"  # Changed from "map"
+        goal_pose.header.frame_id = "map"  # Changed from "map"
         goal_pose.header.stamp = self.get_clock().now().to_msg()
         goal_pose.pose.position.x = goal[0]
         goal_pose.pose.position.y = goal[1]
@@ -378,8 +421,8 @@ class LaneChange(Node):
 
                     
             last_point = find_furthest_point(closest_cluster, first_point)
-            furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 70)
-            furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 70)
+            furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 30)
+            furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 30)
             furthest_point1_global = self.convert_grid_to_global(furthest_point1)
             furthest_point2_global = self.convert_grid_to_global(furthest_point2)
             self.publish_furthest_points(furthest_point1_global, furthest_point2_global)
@@ -387,10 +430,12 @@ class LaneChange(Node):
             angle1 = self.calculate_angle(furthest_point1_global, self.goals[-1], self.goals[-2])
             angle2 = self.calculate_angle(furthest_point2_global, self.goals[-1], self.goals[-2])
             furthest_point = furthest_point1 if angle1 > angle2 else furthest_point2
-            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], 110)
+            distance = util.calculate_distance(furthest_point, robot_coords_grid)
+            NodeGlobal.log_info(f"distance to lane {distance}")
+            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], 92)
             # distance_lane2_bot = util.calculate_distance(robot_coords_grid, first_point2)
             # distance_goal_bot = util.calculate_distance(robot_coords_grid, first_point)
-            goal_coords = np.array(self.convert_grid_to_global(goal_point))
+            goal_coords = np.array(self.convert_grid_to_global(goal_point)
             # if distance_goal_bot < 0.001:
             #     NodeGlobal.log_warn("Goal point too close to robot, using direct point")
             #     goal_coords = np.array(util.convert_to_global_coords(first_point))
