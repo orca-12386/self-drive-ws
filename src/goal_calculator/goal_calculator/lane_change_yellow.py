@@ -14,20 +14,19 @@ from std_msgs.msg import Bool as LaneChangeStatus
 
 # These are your package-specific imports.
 from goal_calculator.ros2_wrapper import Message, Subscription, Publisher, Config, NodeGlobal
-import goal_calculator.lane_follow as util
+import goal_calculator.util as util
 from sklearn.cluster import DBSCAN
 from scipy.spatial import cKDTree
 import statistics
 from collections import defaultdict
+from scipy.spatial.transform import Rotation as R
 
 
-# def yaw_to_quaternion(yaw):
-#     """Converts a yaw angle (in radians) to a quaternion."""
-#     qx = 0.0
-#     qy = 0.0
-#     qz = math.sin(yaw / 2)
-#     qw = math.cos(yaw / 2)
-#     return qx, qy, qz, qw
+def get_yaw_from_odometry(odom_msg: Odometry) -> float:
+    q = odom_msg.pose.pose.orientation
+    r = R.from_quat([q.x, q.y, q.z, q.w])
+    _, _, yaw = r.as_euler('xyz', degrees=False)
+    return yaw
 
 def extrapolate_points(x1, y1, x2, y2, distance):
     dx, dy = x2-x1, y2-y1
@@ -44,7 +43,7 @@ class LaneChange(Node):
     def __init__(self):
         super().__init__("lane_change_node")
         NodeGlobal.obj = self
-        self.declare_parameter('config_file_path')
+        self.declare_parameter('config_file_path', '')
         Config.read_config(self.get_parameter('config_file_path').value)
         NodeGlobal.log_info("Config read: "+self.get_parameter('config_file_path').value)
 
@@ -57,18 +56,33 @@ class LaneChange(Node):
             execute_callback=self.execute_callback_wrapper
         )
 
+        self.latest_map_msg = None
+        self.latest_odom_msg = None
+        self.odom_history = []
+        self.max_odom_history = 20
+        
+        self.map_subscription = self.create_subscription(
+            OccupancyGrid,
+            'map/yellow/local',
+            self.map_callback,
+            10
+        )
+        
+        self.odom_subscription = self.create_subscription(
+            Odometry,
+            'odom',
+            self.odom_callback,
+            10
+        )
         # Create subscriptions.
         subscription_info = {
             "map": ["map/yellow/local", OccupancyGrid],
-            "odom": ["odom", Odometry],
-            "robot_pose_global": ["map/robot_pose_global", PoseStamped],
-            "robot_pose_grid": ["map/robot_pose_grid", PoseStamped],
-            "robot_orientation": ["map/robot_orientation", Float64, 10]
+            "odom": ["odom", Odometry]
         }
         Subscription.create_subscriptions(subscription_info)
 
         publisher_info = {
-            "goal_pose": ["move_base_simple/goal1", PoseStamped],
+            "goal_pose": ["goal_pose", PoseStamped],
             "lane_change_status": ["lane_change_status", LaneChangeStatus]
         }
         Publisher.create_publishers(publisher_info)
@@ -81,10 +95,50 @@ class LaneChange(Node):
         self.furthest1_pub = self.create_publisher(PoseStamped, '/furthest_point1_global', 10)
         self.furthest2_pub = self.create_publisher(PoseStamped, '/furthest_point2_global', 10)
 
+    def map_callback(self, msg):
+        self.latest_map_msg = msg
+    
+    def odom_callback(self, msg):
+        self.latest_odom_msg = msg
+        self.odom_history.append(msg)
+        
+        # Maintain history buffer size
+        if len(self.odom_history) > self.max_odom_history:
+            self.odom_history.pop(0)
+    
+    # Rest of the callback logic...
+
+    
+        if self.lane_change_active:
+            if hasattr(self, 'current_goal_pose') and self.current_goal_pose is not None:
+                curr_coords = self.get_robot_coords_global()
+                if curr_coords and self.goal_reached(curr_coords, self.current_goal_pose):
+                    NodeGlobal.log_info("Goal reached!")
+    
+    def get_robot_coords_global(self):
+        if self.latest_odom_msg is None:
+            return None
+        robot_pose_global = self.latest_odom_msg.pose
+        robot_coords_global = (robot_pose_global.pose.position.x, robot_pose_global.pose.position.y)
+        return robot_coords_global
+    
+    def get_robot_coords_grid(self):
+        if self.latest_map_msg is None:
+            return None
+        resolution = self.latest_map_msg.info.resolution
+        robot_coords_global = self.get_robot_coords_global()
+        if robot_coords_global is None:
+            return None
+        robot_coords_grid = (
+            (robot_coords_global[0] - self.latest_map_msg.info.origin.position.x) / resolution,
+            (robot_coords_global[1] - self.latest_map_msg.info.origin.position.y) / resolution
+        )
+        return robot_coords_grid
+    
     def publish_furthest_points(self, point1, point2, orientation_yaw=0.0):
         def make_pose_stamped(x, y, yaw):
             pose = PoseStamped()
-            pose.header.frame_id = "odom"  # Use "map" if that's your global frame
+            pose.header.frame_id = "odom"
             pose.header.stamp = self.get_clock().now().to_msg()
             pose.pose.position.x = x
             pose.pose.position.y = y
@@ -114,8 +168,9 @@ class LaneChange(Node):
 
 
     def add_goal_pose(self):
-        robot_coords_global = Subscription.subs["robot_pose_global"].get_latest_data()
-        self.goals.append(np.array(robot_coords_global))
+        robot_coords_global = self.get_robot_coords_global()
+        if robot_coords_global is not None:
+            self.goals.append(np.array(robot_coords_global))
 
     def publish_status(self, status_bool):
         status_msg = LaneChangeStatus()
@@ -128,6 +183,10 @@ class LaneChange(Node):
     def goal_callback(self, goal_request):
         self.get_logger().info(f"Received goal request: lane_change = {goal_request.data}")
         if goal_request.data == 1:
+            if self.latest_map_msg is None or self.latest_odom_msg is None:
+                self.get_logger().error("Cannot accept lane change - missing map or odometry data")
+                return GoalResponse.REJECT
+                
             self.get_logger().info("Lane change action received")
             self.lane_change_active = True
             return GoalResponse.ACCEPT
@@ -139,8 +198,14 @@ class LaneChange(Node):
 
     async def async_execute_callback(self, goal_handle):
         NodeGlobal.log_info("Lane change initializing")
-        initial_coords = Subscription.subs["robot_pose_grid"].get_latest_data()
+
+        initial_coords = self.get_robot_coords_grid()
         
+        if initial_coords is None:
+            NodeGlobal.log_error("Failed to get robot coordinates")
+            goal_handle.abort()
+            return LaneChangeAction.Result()
+            
         try:
             goal_pose = self.get_goal_pose(initial_coords)
             
@@ -149,19 +214,29 @@ class LaneChange(Node):
                 goal_handle.abort()
                 return LaneChangeAction.Result()
 
+            self.current_goal_pose = goal_pose
             self.publish_goal(goal_pose)
 
             while rclpy.ok():
-                curr_coords = Subscription.subs["robot_pose_global"].get_latest_data()
+                curr_coords = self.get_robot_coords_global()
+                if curr_coords is None:
+                    NodeGlobal.log_warn("No current coordinates available, waiting...")
+                    await asyncio.sleep(0.1)
+                    continue
+                    
                 if self.goal_reached(curr_coords, goal_pose):
                     NodeGlobal.log_info("Lane change complete.")
                     self.lane_change_active = False
                     self.publish_status(False)
+                    self.current_goal_pose = None
                     goal_handle.succeed()
                     return LaneChangeAction.Result()
                 await asyncio.sleep(0.1)
         except Exception as e:
             NodeGlobal.log_error(f"Error during lane change execution: {str(e)}")
+            self.lane_change_active = False
+            self.publish_status(False)
+            self.current_goal_pose = None
             goal_handle.abort()
             return LaneChangeAction.Result()
 
@@ -174,25 +249,45 @@ class LaneChange(Node):
 
     def create_goal_pose(self, goal):
         goal_pose = PoseStamped()
-        goal_pose.header.frame_id = "odom"
+        goal_pose.header.frame_id = "odom"  # Changed from "map"
         goal_pose.header.stamp = self.get_clock().now().to_msg()
         goal_pose.pose.position.x = goal[0]
         goal_pose.pose.position.y = goal[1]
         goal_pose.pose.position.z = 0.0
-        robot_orientation_data = Subscription.subs["robot_orientation"].get_all_data()
-        # NodeGlobal.log_info(robot_orientation_data)
-        if not robot_orientation_data:
-            # Fallback if no orientation data is available
-            avg_orientation = 0.0
-            NodeGlobal.log_error("No orientation data available, using default 0.0")
+        
+        # Use the stored odometry history for orientation calculation
+        if len(self.odom_history) > 5:
+            recent_odom = self.odom_history[:-5]  # Skip the most recent 5 as they might be noisy
+            robot_orientation_data = [get_yaw_from_odometry(x) for x in recent_odom]
+            if robot_orientation_data:
+                avg_orientation = statistics.fmean(robot_orientation_data)
+            else:
+                avg_orientation = 0.0
+                NodeGlobal.log_warn("No orientation data in history, using default 0.0")
         else:
-            avg_orientation = statistics.fmean(robot_orientation_data)
+            avg_orientation = 0.0
+            NodeGlobal.log_warn("Not enough orientation data in history, using default 0.0")
+            
         goal_pose.pose.orientation.x = 0.0
         goal_pose.pose.orientation.y = 0.0
         goal_pose.pose.orientation.z = math.sin(avg_orientation / 2)
         goal_pose.pose.orientation.w = math.cos(avg_orientation / 2)
 
         return goal_pose
+    def convert_grid_to_global(self, grid_coords):
+        """Convert grid coordinates to global coordinates"""
+        if self.latest_map_msg is None:
+            return None
+        
+        resolution = self.latest_map_msg.info.resolution
+        origin_x = self.latest_map_msg.info.origin.position.x
+        origin_y = self.latest_map_msg.info.origin.position.y
+        
+        global_x = grid_coords[0] * resolution + origin_x
+        global_y = grid_coords[1] * resolution + origin_y
+        
+        return (global_x, global_y)
+
 
     def get_goal_pose(self, robot_coords_grid):
         def get_all_clusters(binary_array, eps=Config.config["dbscan_eps"], 
@@ -201,17 +296,21 @@ class LaneChange(Node):
             points = points[:, [1, 0]]  # Swap columns for (x,y) format
             
             if len(points) < min_samples:
-                return []
+                return [np.array([]), np.array([])]
             
             dbscan = DBSCAN(eps=eps, min_samples=min_samples)
             clusters = dbscan.fit_predict(points)
             return [points[clusters == label] for label in np.unique(clusters) if label != -1]
 
         try:
-            map_data = Subscription.subs["map"].get_latest_data()
-            if map_data is None:
+            if self.latest_map_msg is None:
                 NodeGlobal.log_error("No map data available")
                 return None
+            
+            map_data = np.array(self.latest_map_msg.data).reshape(
+                self.latest_map_msg.info.height,
+                self.latest_map_msg.info.width
+            )
 
             all_clusters = get_all_clusters(map_data)
             NodeGlobal.log_info(f"Found {len(all_clusters)} clusters")
@@ -279,19 +378,19 @@ class LaneChange(Node):
 
                     
             last_point = find_furthest_point(closest_cluster, first_point)
-            furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 30)
-            furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 30)
-            furthest_point1_global = util.convert_to_global_coords(furthest_point1)
-            furthest_point2_global = util.convert_to_global_coords(furthest_point2)
+            furthest_point1 = extrapolate_points(first_point[0], first_point[1], last_point[0], last_point[1], 70)
+            furthest_point2 = extrapolate_points(last_point[0], last_point[1], first_point[0], first_point[1], 70)
+            furthest_point1_global = self.convert_grid_to_global(furthest_point1)
+            furthest_point2_global = self.convert_grid_to_global(furthest_point2)
             self.publish_furthest_points(furthest_point1_global, furthest_point2_global)
             # Modify the goal selection block in get_goal_pose:
             angle1 = self.calculate_angle(furthest_point1_global, self.goals[-1], self.goals[-2])
             angle2 = self.calculate_angle(furthest_point2_global, self.goals[-1], self.goals[-2])
             furthest_point = furthest_point1 if angle1 > angle2 else furthest_point2
-            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], Config.config["extrapolate_distance"])
+            goal_point = extrapolate_points(robot_coords_grid[0], robot_coords_grid[1], furthest_point[0], furthest_point[1], 110)
             # distance_lane2_bot = util.calculate_distance(robot_coords_grid, first_point2)
             # distance_goal_bot = util.calculate_distance(robot_coords_grid, first_point)
-            goal_coords = np.array(util.convert_to_global_coords(goal_point))
+            goal_coords = np.array(self.convert_grid_to_global(goal_point))
             # if distance_goal_bot < 0.001:
             #     NodeGlobal.log_warn("Goal point too close to robot, using direct point")
             #     goal_coords = np.array(util.convert_to_global_coords(first_point))
