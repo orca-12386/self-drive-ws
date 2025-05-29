@@ -22,6 +22,10 @@ class PotholeDetector(BaseDetector):
         self.declare_parameter("depth_sub_topic", '/zed_node/stereocamera/depth/image_raw')
         self.depth_sub_topic = self.get_parameter("depth_sub_topic").get_parameter_value().string_value
 
+        self.declare_parameter("sim", False)
+        self.sim = self.get_parameter("sim").get_parameter_value().bool_value
+        
+
         self.mask_sub = self.create_subscription(Image, "/mask/white", self.mask_callback, 10)
         self.odom_sub = self.create_subscription(Odometry,"/odom", self.odom_callback, 10)
         self.depth_sub = self.create_subscription(Image, self.depth_sub_topic, self.depth_callback, 10)
@@ -30,11 +34,10 @@ class PotholeDetector(BaseDetector):
         self.object_coords = None
         self.detected_point = None
         self.min_area = 100
-        self.max_area = 1500
+        self.max_area = 2000
         self.min_circularity = 0.4
         self.bot_position = None
         self.bot_orientation = None
-        self.sim = True
         self.depth_stamp = None
         self.depth_frame_id = None
         self.latest_depth_image = None
@@ -88,17 +91,18 @@ class PotholeDetector(BaseDetector):
             
             for contour in contours:
                 area = cv2.contourArea(contour)
-                if area < self.min_area or area > self.max_area:
-                    continue
 
                 if len(contour) < 5:
                     continue
-
+                print("Ellipse Found")
+                if area < self.min_area or area > self.max_area:
+                    continue
                 perimeter = cv2.arcLength(contour, True)
                 if perimeter == 0:
                     continue
 
                 circularity = 4 * np.pi * area / (perimeter * perimeter)
+                print(circularity)
                 if circularity < self.min_circularity:
                     continue
                 
@@ -116,7 +120,6 @@ class PotholeDetector(BaseDetector):
                 fy = self.camera_info.k[4]
                 major_axis_meters = (major_axis / fx) * depth
                 self.get_logger().info(f"Ellipse radius: {major_axis_meters} meters")
-
                 if major_axis_meters < 0.5 or major_axis_meters > 0.7:
                     continue
 

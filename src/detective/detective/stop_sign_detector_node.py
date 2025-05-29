@@ -26,7 +26,10 @@ class StopSignDetector(BaseDetector):
         self.odom_sub = self.create_subscription(Odometry,"/odom", self.odom_callback, 10)
         self.depth_sub = self.create_subscription(Image, "/zed_node/stereocamera/depth/image_raw", self.depth_callback, 10)
         self.pointstamped_pub = self.create_publisher(PointStamped, "detector/stop_sign/position", 10)
-        self.sim = True
+
+        self.declare_parameter("sim", False)
+        self.sim = self.get_parameter("sim").get_parameter_value().bool_value
+
         self.detected_point = None
         self.depth_stamp = None
         self.depth_frame_id = None

@@ -378,6 +378,7 @@ def generate_launch_description():
             executable='ocrstop',
             name='stop_sign_detector_node',
             parameters=[{
+                'sim': SIM,
                 'depth_sub_topic': depth_sub_topic,
                 'color_sub_topic': color_sub_topic,
                 'camera_info_sub_topic': camera_info_sub_topic,
@@ -388,6 +389,7 @@ def generate_launch_description():
             executable='pothole_detector_node',
             name='pothole_detector_node',
             parameters=[{
+                'sim': SIM,
                 'target_text': STOP_SIGN_TEXT,
                 'depth_sub_topic': depth_sub_topic,
                 'color_sub_topic': color_sub_topic,
@@ -400,12 +402,26 @@ def generate_launch_description():
         Node(
             package='detective',
             executable='drum_detector_node',
-            name='drum_detector_node'
+            name='drum_detector_node',
+            parameters=[{
+                'sim': SIM,
+                'target_text': STOP_SIGN_TEXT,
+                'depth_sub_topic': depth_sub_topic,
+                'color_sub_topic': color_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
+            }]
         ),
         Node(
             package='detective',
             executable='pedestrian_detector_node',
-            name='pedestrian_detector_node'
+            name='pedestrian_detector_node',
+            parameters=[{
+                'sim': SIM,
+                'target_text': STOP_SIGN_TEXT,
+                'depth_sub_topic': depth_sub_topic,
+                'color_sub_topic': color_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
+            }]
         )
     ]
 
