@@ -52,7 +52,7 @@ class TextDetectorNode(Node):
         self.detected_point = None
         self.image_pub = self.create_publisher(Image, '/annotated_image', 10)
         self.publisher = self.create_publisher(PointStamped, '/detected_text_info', 10)
-        self.position_publisher = self.create_publisher(PointStamped, '/detector/stop_sign/coordinates', 10)
+        self.position_publisher = self.create_publisher(Point, '/detector/stop_sign/coordinates', 10)
 
         self.get_logger().info("TextDetectorNode initialized")
 
@@ -168,15 +168,13 @@ class TextDetectorNode(Node):
 
                     point = self.cloud_to_global(point)
 
-                    self.detected_point = PointStamped()
-                    self.detected_point.header.stamp = self.get_clock().now().to_msg()
-                    self.detected_point.header.frame_id = "map"
-                    self.detected_point.point.x = point.x
-                    self.detected_point.point.y = point.y
-                    self.detected_point.point.z = point.z
+                    self.detected_point = Point()
+                    self.detected_point.x = point.x
+                    self.detected_point.y = point.y
+                    self.detected_point.z = point.z
 
                     self.position_publisher.publish(self.detected_point)
-                    self.get_logger().info(f"Detected Stop Sign: {self.detected_point.point.x}, {self.detected_point.point.y}, {self.detected_point.point.z}")
+                    self.get_logger().info(f"Detected Stop Sign: {self.detected_point.x}, {self.detected_point.y}, {self.detected_point.z}")
                 break  
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8"))
 

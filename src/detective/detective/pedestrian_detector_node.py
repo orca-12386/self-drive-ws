@@ -2,7 +2,7 @@ import rclpy
 import cv2
 from detective.detector_base import BaseDetector
 from sensor_msgs.msg import Image
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import Point, PointStamped
 from nav_msgs.msg import Odometry
 import numpy as np
 import tf2_ros
@@ -24,7 +24,7 @@ class PedestrianDetector(BaseDetector):
         self._load_model()  # Reload model with new path
         self.odom_sub = self.create_subscription(Odometry,"/odom", self.odom_callback, 10)
         self.depth_sub = self.create_subscription(Image, "/zed_node/stereocamera/depth/image_raw", self.depth_callback, 10)
-        self.pointstamped_pub = self.create_publisher(PointStamped, "detector/pedestrian/position", 10)
+        self.location_pub = self.create_publisher(Point, "detector/pedestrian/coordinates", 10)
         self.sim = True
         self.detected_point = None
         self.depth_stamp = None
@@ -123,16 +123,13 @@ class PedestrianDetector(BaseDetector):
                                              self.bot_orientation.z, self.bot_orientation.w])
                         bot_yaw = euler[2]  
 
-                        self.detected_point = PointStamped()
-                        self.detected_point.header.stamp = self.get_clock().now().to_msg()
-                        self.detected_point.header.frame_id = "map"
-                        self.detected_point.point.x = self.bot_position.x + point.x * sin(bot_yaw) + point.y * cos(bot_yaw)
-                        self.detected_point.point.y = self.bot_position.y + point.y * sin(bot_yaw) - point.x * cos(bot_yaw) 
-                        self.detected_point.point.z = - point.z
-                        
-                        self.point_pub.publish(point)
-                        self.pointstamped_pub.publish(self.detected_point)
-                        self.get_logger().info(f"Detected Pedestrian: {self.detected_point.point}")
+                        self.detected_point = Point()
+                        self.detected_point.x = self.bot_position.x + point.x * sin(bot_yaw) + point.y * cos(bot_yaw)
+                        self.detected_point.y = self.bot_position.y + point.y * sin(bot_yaw) - point.x * cos(bot_yaw) 
+                        self.detected_point.z = - point.z
+
+                        self.location_pub.publish(self.detected_point)
+                        self.get_logger().info(f"Detected Pedestrian: {self.detected_point}")
             
             self.object_coords = None
         except Exception as e:
