@@ -14,12 +14,12 @@ controller_server:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.250
-      yaw_goal_tolerance: 0.250
+      yaw_goal_tolerance: 0.10
     precise_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.50
-      yaw_goal_tolerance: 0.50
+      yaw_goal_tolerance: 0.10
     
 
     # my DWB parameters 

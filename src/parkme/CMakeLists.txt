@@ -85,6 +85,38 @@ install(TARGETS
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 
+
+add_library(lane_pullout_server SHARED
+src/pullout_lanes.cpp)
+target_include_directories(lane_pullout_server PRIVATE
+$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+$<INSTALL_INTERFACE:include>)
+target_compile_definitions(lane_pullout_server
+PRIVATE "ACTION_TUTORIALS_CPP_BUILDING_DLL")
+ament_target_dependencies(lane_pullout_server
+  "interfaces"
+  "rclcpp"
+  "rclcpp_action"
+  "rclcpp_components"
+  "nav_msgs"
+  "visualization_msgs"
+  "geometry_msgs"
+  "sensor_msgs"
+  "cv_bridge"
+  "OpenCV"
+  "tf2"
+  "tf2_ros"
+  "tf2_geometry_msgs")
+
+
+
+rclcpp_components_register_node(lane_pullout_server PLUGIN "parkme::ParkingActionServer" EXECUTABLE lane_pullout)
+install(TARGETS
+  lane_pullout_server
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin)
+
 ## Client
 
 add_library(action_client SHARED
@@ -106,6 +138,10 @@ install(TARGETS
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 686d728 (Adding Pullout Action Server)
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
