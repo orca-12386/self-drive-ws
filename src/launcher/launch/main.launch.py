@@ -30,6 +30,7 @@ def generate_launch_description():
     SIM = config['sim']
     ENABLE_DETECTION = config["detectors"]["enable"]
     DETECTION_MODE = config["detectors"]["mode"]
+    STOP_SIGN_TEXT = config["detectors"]["stop_sign"]["text"]
     ENABLE_GOALS = config["goal_calculator"]["enable"]
     ENABLE_BEHAVIOUR_MANAGER = config["behaviour_manager"]["enable"]
     BEHAVIOUR_CODE = config["behaviour_manager"]["code"]
@@ -363,19 +364,35 @@ def generate_launch_description():
             package='goal_calculator',
             executable='left_turn',
             name='left_turn'
+        ),
+        Node(
+            package='goal_calculator',
+            executable='straight_turn',
+            name='straight_turn'
         )
     ]
 
     launch_detector_constant = [
         Node(
             package='detective',
-            executable='stop_sign_detector_node',
-            name='stop_sign_detector_node'
+            executable='ocrstop',
+            name='stop_sign_detector_node',
+            parameters=[{
+                'depth_sub_topic': depth_sub_topic,
+                'color_sub_topic': color_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
+            }]
         ),
         Node(
             package='detective',
             executable='pothole_detector_node',
-            name='pothole_detector_node'
+            name='pothole_detector_node',
+            parameters=[{
+                'target_text': STOP_SIGN_TEXT,
+                'depth_sub_topic': depth_sub_topic,
+                'color_sub_topic': color_sub_topic,
+                'camera_info_sub_topic': camera_info_sub_topic,
+            }]
         )
     ]
 
@@ -497,10 +514,9 @@ def generate_launch_description():
     launch_description.extend(interpolation)
     launch_description.extend(launch_local_map)
     launch_description.extend(launch_map_ensemble)
-    
-    launch_description.extend(launch_detector_constant)
 
     if ENABLE_DETECTION:
+        launch_description.extend(launch_detector_constant)
         if DETECTION_MODE == 0:
             launch_description.extend(launch_detector_model)
         if DETECTION_MODE == 1:

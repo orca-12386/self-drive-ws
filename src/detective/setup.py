@@ -27,7 +27,6 @@ setup(
             'pothole_detector_node = detective.pothole_detector_node:main',
             'saver = detective.im_saver:main',
             'ocrstop = detective.stopocr:main',
-            'rukja = detective.ocr2:main',
         ],
     },
 )

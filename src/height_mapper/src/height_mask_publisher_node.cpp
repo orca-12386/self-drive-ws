@@ -145,7 +145,7 @@ public:
         
         object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
         object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.6f, 1.2f));
-        object_types.push_back(ObjectType("stop_sign", "stop_sign", 1.8f, 2.2f));
+        object_types.push_back(ObjectType("pedestrian", "pedestrian", 1.8f, 2.2f));
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
             color_sub_topic, 10, 

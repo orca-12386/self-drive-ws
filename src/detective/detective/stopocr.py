@@ -26,6 +26,12 @@ class TextDetectorNode(Node):
 
         self.declare_parameter("target_text", "STOP")
         self.target_text = self.get_parameter("target_text").get_parameter_value().string_value
+        self.declare_parameter("color_sub_topic", '/zed_node/stereocamera/image_raw')
+        self.color_sub_topic = self.get_parameter("color_sub_topic").get_parameter_value().string_value
+        self.declare_parameter("depth_sub_topic", '/zed_node/stereocamera/depth/image_raw')
+        self.depth_sub_topic = self.get_parameter("depth_sub_topic").get_parameter_value().string_value
+        self.declare_parameter("camera_info_sub_topic", '/zed_node/stereocamera/camera_info')
+        self.camera_info_sub_topic = self.get_parameter("camera_info_sub_topic").get_parameter_value().string_value
 
         self.bridge = CvBridge()
         
@@ -33,9 +39,9 @@ class TextDetectorNode(Node):
 
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
-        self.create_subscription(Image, '/zed_node/stereocamera/image_raw', self.image_callback, 10)
-        self.create_subscription(Image, '/zed_node/stereocamera/depth/image_raw', self.depth_callback, 10)
-        self.create_subscription(CameraInfo, '/zed_node/stereocamera/camera_info', self.camera_info_callback, 10)
+        self.create_subscription(Image, self.color_sub_topic, self.image_callback, 10)
+        self.create_subscription(Image, self.depth_sub_topic, self.depth_callback, 10)
+        self.create_subscription(CameraInfo, self.camera_info_sub_topic, self.camera_info_callback, 10)
 
         self.sim = True
         self.depth_image = None
@@ -46,7 +52,7 @@ class TextDetectorNode(Node):
         self.detected_point = None
         self.image_pub = self.create_publisher(Image, '/annotated_image', 10)
         self.publisher = self.create_publisher(PointStamped, '/detected_text_info', 10)
-        self.position_publisher = self.create_publisher(PointStamped, '/detector/stop_sign/position', 10)
+        self.position_publisher = self.create_publisher(PointStamped, '/detector/stop_sign/coordinates', 10)
 
         self.get_logger().info("TextDetectorNode initialized")
 

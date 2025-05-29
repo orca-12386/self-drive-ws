@@ -37,7 +37,7 @@ setup(
             'left_turn = goal_calculator.left_turn:main',
             'stop_server= goal_calculator.StopServer:main',
             'lane_change_yellow = goal_calculator.lane_change_yellow:main',
-            'straight = goal_calculator.straight:main',
+            'straight_turn = goal_calculator.straight:main',
         ],
     },
 )

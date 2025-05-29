@@ -19,10 +19,13 @@ def quat_to_euler(quat):
 class PotholeDetector(BaseDetector):
     def __init__(self):
         super().__init__('pothole_detector', '/detector/pothole', 'trained_models/StopSigns.pt')
+        self.declare_parameter("depth_sub_topic", '/zed_node/stereocamera/depth/image_raw')
+        self.depth_sub_topic = self.get_parameter("depth_sub_topic").get_parameter_value().string_value
+
         self.mask_sub = self.create_subscription(Image, "/mask/white", self.mask_callback, 10)
         self.odom_sub = self.create_subscription(Odometry,"/odom", self.odom_callback, 10)
-        self.depth_sub = self.create_subscription(Image, "/zed_node/stereocamera/depth/image_raw", self.depth_callback, 10)
-        self.pointstamped_pub = self.create_publisher(PointStamped, '/detector/pothole/position', 10)
+        self.depth_sub = self.create_subscription(Image, self.depth_sub_topic, self.depth_callback, 10)
+        self.pointstamped_pub = self.create_publisher(PointStamped, '/detector/pothole/coordinates', 10)
         self.latest_image = None
         self.object_coords = None
         self.detected_point = None

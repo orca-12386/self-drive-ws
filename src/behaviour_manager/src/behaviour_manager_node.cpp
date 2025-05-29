@@ -146,6 +146,66 @@ namespace LaneChecker {
     }
 }
 
+namespace LogOdds {
+    double hit_prob;
+    double miss_prob;
+    double mark_prob;
+    double unmark_prob;
+    double unknown_prob;
+
+    double hit_log_odds;
+    double miss_log_odds;
+    double mark_log_odds;
+    double unmark_log_odds;
+    double unknown_log_odds;
+
+    double max_prob;
+    double min_prob;
+    double max_log_odds;
+    double min_log_odds;
+
+    double prob_to_log_odds(double prob) {
+        double ratio = (prob/(1-prob));
+        return std::log(ratio);
+    }
+
+    void initialise() {
+        hit_prob = 0.8;
+        miss_prob = 0.2;
+        mark_prob = 0.85;
+        unmark_prob = 0.15;
+        unknown_prob = 0.5;
+        // max_prob = 0.99;
+        // min_prob = 0.12;
+
+        hit_log_odds = prob_to_log_odds(hit_prob);
+        miss_log_odds = prob_to_log_odds(miss_prob);
+        mark_log_odds = prob_to_log_odds(mark_prob);
+        unmark_log_odds = prob_to_log_odds(unmark_prob);
+        unknown_log_odds = prob_to_log_odds(unknown_prob);
+        max_log_odds = 8;
+        min_log_odds = -8;
+    }
+
+    bool is_positive(double log_odds) {
+        return log_odds > mark_log_odds;
+    }
+
+    bool is_negative(double log_odds) {
+        return log_odds < unmark_log_odds;
+    }
+
+    void clamp(double& log_odds) {
+        if(log_odds > max_log_odds) {
+            log_odds = max_log_odds;
+        }
+        if(log_odds < min_log_odds) {
+            log_odds = min_log_odds;
+        }
+    }
+}
+
+
 class Detection {
 public:
     Detection(std::array<double, 3> detection_location, std::array<double, 3> robot_location) {
@@ -154,6 +214,8 @@ public:
         this->distance = calculate_distance(robot_location);
         this->action = false;
         this->current = false;
+        this->outside = false;
+        this->current_log_odds = LogOdds::unknown_log_odds;
     }
 
     std::string to_string() {
@@ -161,8 +223,9 @@ public:
         std::string o1(std::string("Distance: ")+std::to_string(this->distance));
         std::string o2(std::string("Action: ")+std::to_string(this->action));
         std::string o3(std::string("Current: ")+std::to_string(this->current));
+        std::string o4(std::string("Outside: ")+std::to_string(this->outside));
         std::string nl("\n");
-        return o0+nl+o1+nl+o2+nl+o3+nl;
+        return o0+nl+o1+nl+o2+nl+o3+nl+o4+nl;
     }
 
     void set_locations(std::array<double, 3> detection_location, std::array<double, 3> robot_location) {
@@ -201,10 +264,20 @@ public:
 
     void check_area() {
         WorldPose obs_pos = WorldPose(detection_location[0], detection_location[1]);
-        this->current = LaneChecker::checkInLane(obs_pos);
+        bool pred = LaneChecker::checkInLane(obs_pos);
+        if(pred) {
+            current_log_odds += LogOdds::hit_log_odds;
+        } else {
+            current_log_odds += LogOdds::miss_log_odds;
+        }
+        this->current = LogOdds::is_positive(current_log_odds);
+        this->outside = LogOdds::is_negative(current_log_odds);
+        LogOdds::clamp(current_log_odds);
     }
     
+    double current_log_odds;
     bool current;
+    bool outside;
     bool action;
     double distance;
     std::array<double, 3> robot_location;
@@ -238,7 +311,7 @@ public:
         this->distance_threshold = distance_threshold;
     }
 
-    bool is_detected(Detection*& det_out) {
+    bool is_detected(Detection*& det_out, int check_area_expected = 0) {
         Detection* det;
         bool status = this->get_latest_detection(det);
         if(status) {
@@ -247,11 +320,28 @@ public:
             // RCLCPP_INFO(node->get_logger(), det->to_string().c_str());
             std::array<double, 3> odometry_location;
             bool odometry_recv = get_odometry_location_func(odometry_location);
+            switch(check_area_expected) {
+                case 0:
+                    // Doesnt matter where obstacle is
+                break;
+                case 1:
+                    // Action is only triggered when obstacle is outside
+                    if(!det->outside) {
+                        return false;
+                    }
+                    break;
+                case 2:
+                    // Action is only triggered when obstacle is inside
+                    if(!det->current) {
+                        return false;
+                    }
+                    break;
+            }
             if(det->validate_distance(this->distance_threshold, odometry_location) && !det->action) {
                 det->action = true;
                 // RCLCPP_INFO(node->get_logger(), "Returned valid detection");
                 return true;
-            }
+            }    
         }
         return false;
     }
@@ -295,10 +385,13 @@ private:
             }
             prev_detection->robot_location = odometry_location;
             prev_detection->distance = prev_detection->calculate_distance(odometry_location);
-            bool earlier = prev_detection->current;
-            prev_detection->check_area();
-            if(earlier != prev_detection->current) {
-                RCLCPP_INFO(node->get_logger(), prev_detection->to_string().c_str());
+            if(!prev_detection->action) {
+                bool earlier1 = prev_detection->current;
+                bool earlier2 = prev_detection->outside;    
+                prev_detection->check_area();
+                if(earlier1 != prev_detection->current || earlier2 != prev_detection->outside) {
+                    RCLCPP_INFO(node->get_logger(), prev_detection->to_string().c_str());
+                }    
             }
             return; 
         }
@@ -885,7 +978,7 @@ private:
 
     void full_course() {
         if(is_detected.at("stop_sign")) {
-            if(!detections["stop_sign"]->current) {
+            if(detections["stop_sign"]->outside) {
                 stop_intersection_action();
                 if(check_intersection()) {
                     if(current_turn_index >= turn_sequence.size()) {
@@ -906,6 +999,15 @@ private:
                 } 
             }
         } else if(is_detected.at("pedestrian")) {
+            if(check_intersection()) {
+                /* if pedestrian found at intersection change to stop sign detection */
+                is_detected["stop_sign"] = true;
+                detections["stop_sign"] = detections["pedestrian"];
+                detections["stop_sign"]->outside = true;
+                is_detected["pedestrian"] = false;
+                full_course();
+                return;
+            }
             if(detections["pedestrian"]->current) {
                 stop_in_lane_action();
                 wait(10);
@@ -1252,8 +1354,17 @@ private:
         std::unordered_map<std::string, Detection*> detections;
         Detection* det;
         // log(std::string("Processing detections"));
+        int check_area_expected;
         for(const auto & topic : detection_subs) {
-            is_detected[topic.first] = topic.second->is_detected(det);
+            check_area_expected = 0;
+            if(pattern->behaviour_code == 0 || pattern->behaviour_code == 9) {
+                if((!topic.first.compare("pedestrian")) || (!topic.first.compare("traffic_drum"))) {
+                    check_area_expected = 2;
+                } else if(!topic.first.compare("stop_sign")) {
+                    check_area_expected = 1;
+                }
+            }
+            is_detected[topic.first] = topic.second->is_detected(det, check_area_expected);
             if(is_detected[topic.first]) {
                 log(std::string("detected: ")+std::string(topic.first));
                 detections[topic.first] = det;                
@@ -1320,6 +1431,7 @@ private:
 
 
 int main(int argc, char** argv) {
+    LogOdds::initialise();
     rclcpp::init(argc, argv);
     auto node = std::make_shared<BehaviourManagerNode>();
     rclcpp::executors::MultiThreadedExecutor executor;

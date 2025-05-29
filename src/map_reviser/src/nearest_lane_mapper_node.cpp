@@ -61,13 +61,61 @@ private:
         RCLCPP_INFO(this->get_logger(), str.c_str());
     }
 
-    // Optimized BFS functions for faster performance
+    // Fast cluster size estimation using flood fill
+    int estimate_cluster_size(
+        const std::array<int, 2>& start_point,
+        const nav_msgs::msg::OccupancyGrid::SharedPtr& map,
+        std::vector<std::vector<bool>>& temp_visited,
+        int max_size = 100
+    ) {
+        const int width = map->info.width;
+        const int height = map->info.height;
+        
+        // Directions: right, down, left, up
+        static const std::array<std::array<int, 2>, 4> directions = {{
+            {1, 0}, {0, 1}, {-1, 0}, {0, -1}
+        }};
+        
+        std::queue<std::array<int, 2>> q;
+        q.push(start_point);
+        temp_visited[start_point[1]][start_point[0]] = true;
+        
+        int cluster_size = 0;
+        
+        while (!q.empty() && cluster_size < max_size) {
+            auto p = q.front();
+            q.pop();
+            cluster_size++;
+            
+            // Check all four neighboring directions
+            for (const auto& dir : directions) {
+                const int next_x = p[0] + dir[0];
+                const int next_y = p[1] + dir[1];
+                
+                // Check boundaries and if already visited
+                if (next_x >= 0 && next_x < width && 
+                    next_y >= 0 && next_y < height && 
+                    !temp_visited[next_y][next_x]) {
+                    
+                    // Check if the next point is occupied
+                    const size_t index = next_y * width + next_x;
+                    if (map->data[index] > 0) {
+                        temp_visited[next_y][next_x] = true;
+                        q.push({next_x, next_y});
+                    }
+                }
+            }
+        }
+        
+        return cluster_size;
+    }
 
-    // Use a simple 2D boolean array instead of unordered_set for visited tracking
-    bool get_nearest_point_bfs(
+    // Enhanced BFS that filters out small clusters
+    bool get_nearest_substantial_lane_bfs(
         const std::array<int, 2>& src, 
         const nav_msgs::msg::OccupancyGrid::SharedPtr& map,
-        std::array<int, 2>& dst
+        std::array<int, 2>& dst,
+        int min_cluster_size = 20
     ) {
         const int width = map->info.width;
         const int height = map->info.height;
@@ -75,8 +123,9 @@ private:
         
         // Use 2D boolean array for much faster visited checking
         std::vector<std::vector<bool>> visited(height, std::vector<bool>(width, false));
+        std::vector<std::vector<bool>> cluster_visited(height, std::vector<bool>(width, false));
         
-        // Directions: right, down, left, up (reordered for better cache locality)
+        // Directions: right, down, left, up
         static const std::array<std::array<int, 2>, 4> directions = {{
             {1, 0}, {0, 1}, {-1, 0}, {0, -1}
         }};
@@ -94,9 +143,28 @@ private:
             
             // Check if this point is occupied (value > 0)
             const size_t index = p[1] * width + p[0];
-            if (map->data[index] > 0) {
-                dst = p;
-                return true;
+            if (map->data[index] > 0 && !cluster_visited[p[1]][p[0]]) {
+                // Found an occupied point, now check if it belongs to a substantial cluster
+                
+                // Reset cluster visited array only for the area we'll check
+                // (More efficient than clearing the entire array)
+                std::vector<std::vector<bool>> temp_visited = cluster_visited;
+                
+                int cluster_size = estimate_cluster_size(p, map, temp_visited, min_cluster_size + 10);
+                
+                // Mark all points in this cluster as checked to avoid rechecking
+                for (int y = 0; y < height; ++y) {
+                    for (int x = 0; x < width; ++x) {
+                        if (temp_visited[y][x] && !cluster_visited[y][x]) {
+                            cluster_visited[y][x] = true;
+                        }
+                    }
+                }
+                
+                if (cluster_size >= min_cluster_size) {
+                    dst = p;
+                    return true;
+                }
             }
             
             // Check if we've exceeded maximum search distance (using squared distance)
@@ -122,7 +190,7 @@ private:
             }
         }
         
-        return false;  // No valid point found
+        return false;  // No valid substantial cluster found
     }
 
     void get_connected_points_bfs(
@@ -226,13 +294,19 @@ private:
         nearest_map_msg->info.origin.position.y = map->info.origin.position.y;
         nearest_map_msg->info.origin.position.z = map->info.origin.position.z;
         nearest_map_msg->info.origin.orientation.w = map->info.origin.orientation.w;
+        
         int grid_x = (odom->pose.pose.position.x - map->info.origin.position.x)/map->info.resolution;
         int grid_y = (odom->pose.pose.position.y - map->info.origin.position.y)/map->info.resolution; 
         std::array<int,2> source = {grid_x, grid_y};
         std::array<int,2> nearest_pt;
-        // log("finding nearest");
-        bool b = get_nearest_point_bfs(source, map, nearest_pt);
+        
+        // Calculate minimum cluster size based on map resolution (adaptive threshold)
+        int min_cluster_size = std::max(10, static_cast<int>(0.5 / map->info.resolution)); // At least 0.5 meter worth of points
+        
+        // log("finding nearest substantial lane");
+        bool b = get_nearest_substantial_lane_bfs(source, map, nearest_pt, min_cluster_size);
         if(!b) {
+            // If no substantial lane found, fall back to original behavior or publish empty map
             map_pub->publish(*map);
             return;
         }
