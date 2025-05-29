@@ -655,7 +655,7 @@ public:
                 current_turn_index = 0;
                 detection_limits = {
                     {"traffic_drum", 5},
-                    {"stop_sign", 4},
+                    {"stop_sign", 3.5},
                     {"pedestrian", 5},
                     {"tyre", 5},
                     {"pothole", 5}
@@ -979,8 +979,8 @@ private:
     void full_course() {
         if(is_detected.at("stop_sign")) {
             if(detections["stop_sign"]->outside) {
-                stop_intersection_action();
                 if(check_intersection()) {
+                    stop_intersection_action();
                     if(current_turn_index >= turn_sequence.size()) {
                         rclcpp::shutdown();
                     }
@@ -996,7 +996,9 @@ private:
                             break;
                     }
                     current_turn_index++;
-                } 
+                } else{
+                    stop_in_lane_action();
+                }
             }
         } else if(is_detected.at("pedestrian")) {
             if(check_intersection()) {
