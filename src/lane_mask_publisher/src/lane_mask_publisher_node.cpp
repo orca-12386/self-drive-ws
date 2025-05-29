@@ -110,16 +110,16 @@ private:
             // yellow_mask_upper = cv::Scalar(113, 255, 255);
 
             // Day
-            // white_mask_hsv_lower = cv::Scalar(0, 0, 255);
-            // white_mask_hsv_upper = cv::Scalar(77, 30, 255); //34
-            // yellow_mask_lower = cv::Scalar(50, 0, 230); 
-            // yellow_mask_upper = cv::Scalar(180, 255, 255);
+            white_mask_hsv_lower = cv::Scalar(0, 0, 218);
+            white_mask_hsv_upper = cv::Scalar(43, 41, 255); //34
+            yellow_mask_lower = cv::Scalar(0, 13, 220); 
+            yellow_mask_upper = cv::Scalar(147, 82, 252);
 
             // Inside workshop
-            white_mask_hsv_lower = cv::Scalar(0, 0, 255);
-            white_mask_hsv_upper = cv::Scalar(77, 30, 255); //34
-            yellow_mask_lower = cv::Scalar(26, 68, 94); 
-            yellow_mask_upper = cv::Scalar(179, 255, 255);
+            // white_mask_hsv_lower = cv::Scalar(0, 0, 255);
+            // white_mask_hsv_upper = cv::Scalar(77, 30, 255); //34
+            // yellow_mask_lower = cv::Scalar(26, 68, 94); 
+            // yellow_mask_upper = cv::Scalar(179, 255, 255);
             
             target_v = 140; // Target brightness value
         }

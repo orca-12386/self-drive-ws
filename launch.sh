@@ -5,7 +5,7 @@ COMMANDS=(
     # Local commands (outside container)
     "ros1_bridge|source install/setup.bash && ros2 run ros1_bridge dynamic_bridge --bridge-all-topics|local"
     "launcher|sleep 4 && source install/setup.bash && ros2 launch launcher main.launch.py|local"
-    "teleop_control|sleep 6 && source install/setup.bash && ros2 run manas_expo_nova teleop_control|local"
+    "teleop_control|sleep 6 && source install/setup.bash && ./steve_compy_ros2|local"
     # Container commands (inside Docker)
     # "roscore|source /dvolume/devel/setup.bash && roscore|container"
     "zed_wrapper|sleep 2 && source /dvolume/devel/setup.bash && roslaunch zed_wrapper zed_no_tf.launch|container"
