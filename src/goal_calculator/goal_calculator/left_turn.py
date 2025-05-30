@@ -283,7 +283,7 @@ class LeftTurnNode(Node):
 
             if 0 <= next_lane_point_x < self.map_width and 0 <= next_lane_point_y < self.map_height:
 
-                if math.cos(self.perpendicular_direction) = math.inf:
+                if math.cos(self.perpendicular_direction) == math.inf:
                     offset_x = self.lane_offset * 0
                 else:
                     offset_x = self.lane_offset * math.cos(self.perpendicular_direction)

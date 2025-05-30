@@ -655,8 +655,8 @@ public:
                 current_turn_index = 0;
                 detection_limits = {
                     {"traffic_drum", 5},
-                    {"stop_sign", 3.5},
-                    {"pedestrian", 5},
+                    {"stop_sign", 3},
+                    {"pedestrian", 3},
                     {"tyre", 5},
                     {"pothole", 5}
                 };

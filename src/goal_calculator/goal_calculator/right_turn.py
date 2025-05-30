@@ -192,7 +192,7 @@ class RightTurnNode(Node):
 
         self.get_logger().info(f"Offset Distance: {offset_distance}")
         
-        if math.cos(bot_yaw) == math.inf::
+        if math.cos(bot_yaw) == math.inf:
             offset_x = offset_distance * 0
         else:
             offset_x = offset_distance * math.cos(bot_yaw)
