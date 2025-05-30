@@ -86,27 +86,17 @@ class LeftTurnNode(Node):
 
     def is_behind(self, angle):
         bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
-        bot_yaw = round(bot_yaw / (math.pi / 2)) * (math.pi / 2)
-
-        angle_diff = angle - bot_yaw
-        angle_diff = (angle_diff + math.pi) % (2 * math.pi) - math.pi
-
-        return abs(angle_diff) > math.pi / 2
-
-    
-    def is_left(self, angle):
-        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
         bot_yaw = round(bot_yaw/(math.pi/2)) * (math.pi/2)
-
+        print(bot_yaw, angle)
         if bot_yaw == 0:
-            return angle >= 0 and angle <= math.pi/2
+            return (angle<= -math.pi/2 and angle >= -math.pi) or (angle >= math.pi/2 and angle <= math.pi)
         elif bot_yaw == math.pi/2:
-            return angle >= math.pi/2 and angle <= math.pi
-        elif bot_yaw == math.pi:
-            return angle >= -math.pi and angle <= -math.pi/2
+            return (angle <= 0 and angle >= -math.pi/2) or (angle >= -math.pi and angle <= -math.pi/2)
+        elif bot_yaw == math.pi or bot_yaw == -math.pi:
+            return (angle >= -math.pi/2 and angle <= 0) or (angle >= 0 and angle <= math.pi/2)
         elif bot_yaw == -math.pi/2:
-            return angle >= -math.pi/2 and angle <= 0
-
+            return (angle >= 0 and angle <= math.pi/2) or (angle>=math.pi/2 and angle <= math.pi) 
+            
     def find_intersection_direction(self):
             self.get_logger().info("Searching for Intersection Direction")
             bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
@@ -186,6 +176,8 @@ class LeftTurnNode(Node):
             if cluster_points.size<20:
                 continue
             cluster_center = np.mean(cluster_points, axis=0)
+            cluster_center_world = self.map_to_world(cluster_center[1], cluster_center[0])
+            print(cluster_center_world)
             angle = self.calc_angle(closest_point, cluster_center)
             if self.is_behind(angle):
                 continue
@@ -218,7 +210,7 @@ class LeftTurnNode(Node):
 
         mid_x_world, mid_y_world = self.map_to_world(mid_x, mid_y)
 
-        goal_yaw =  (direction + math.pi/2) + math.pi/3
+        goal_yaw =  (direction + math.pi/2) + math.pi/6
         self.perpendicular_direction = direction + math.pi/2
         
         self.Midpoint = PoseStamped()
@@ -259,7 +251,7 @@ class LeftTurnNode(Node):
 
             queue = deque([(start_x, start_y)])
             visited = {(start_x, start_y)}
-
+            is_left = None
             next_lane_point_x = 0
             next_lane_point_y = 0
 
@@ -268,12 +260,20 @@ class LeftTurnNode(Node):
                 bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
 
                 if self.map_data[y, x] > 0:
-                    
-                    angle = self.calc_angle((bot_x, bot_y), (x, y))
+                   is_left = False
 
-                    if self.is_left(angle):
-                        next_lane_point_x = x
-                        next_lane_point_y = y
+                   if math.pi / 4 <= self.perpendicular_direction <= 3 * math.pi / 4:
+                      is_left = (x < bot_x - 10) and (bot_y - 1 < y < bot_y + 1 )  
+                   elif -3 * math.pi / 4 <= self.perpendicular_direction <= -math.pi / 4:  
+                      is_left = x > bot_x + 10 and (bot_y - 1 < y < bot_y + 1 )
+                   elif (-math.pi <= self.perpendicular_direction < -3 * math.pi / 4) or (3 * math.pi / 4 < self.perpendicular_direction <= math.pi):  
+                      is_left = y < bot_y - 10 and (bot_x - 1 < x < bot_x + 1 )
+                   elif -math.pi / 4 < self.perpendicular_direction < math.pi / 4:  
+                      is_left = y > bot_y + 10 and (bot_x - 1 < x < bot_x + 1 )
+
+                if is_left:
+                        next_lane_point_x, next_lane_point_y = x, y
+                        break
 
                 for dx, dy in directions:
                     nx, ny = x + dx, y + dy
@@ -295,6 +295,8 @@ class LeftTurnNode(Node):
                 goal_x = next_lane_point_x + offset_x
                 goal_y = next_lane_point_y + offset_y
 
+                next_lane_x_world, next_lane_y_world = self.map_to_world(next_lane_point_x, next_lane_point_y)
+                self.get_logger().info(f"{next_lane_x_world,next_lane_y_world}")
                 goal_x_world, goal_y_world = self.map_to_world(goal_x, goal_y)
 
                 self.final_goal = PoseStamped()
