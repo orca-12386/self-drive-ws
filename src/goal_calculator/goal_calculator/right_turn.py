@@ -20,7 +20,7 @@ def quat_to_euler(quat):
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local/near', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.action_server = ActionServer(self, RightTurn, 'RightTurn', execute_callback=self.execute_callback)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -74,10 +74,16 @@ class RightTurnNode(Node):
 
     def is_valid_point(self, src, next_point):
         angle = self.calc_angle(src, next_point)
-        if angle > 0 and angle<math.pi/2:
-            return True
-        else:
-            return False
+        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        bot_yaw = round(bot_yaw/(math.pi/2)) * (math.pi/2)
+        if bot_yaw == 0.0:
+            return angle >= (-math.pi/2) and angle <= (0.0)
+        elif bot_yaw == math.pi/2:
+            return angle >= (0.0) and angle <= (math.pi/2)
+        elif bot_yaw == math.pi:
+            return angle >= (math.pi/2) and angle <= (math.pi)
+        elif bot_yaw == -math.pi/2:
+            return angle >= (-math.pi) and angle <= (-math.pi/2)
 
     def find_right_lane_point(self, min_cluster_size=15, eps=25):
         if self.bot_position is None:
@@ -131,7 +137,7 @@ class RightTurnNode(Node):
 
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
         new_directions = list()
-        skip_dist = 2.0 # in metres
+        skip_dist = 1.0 # in metres
         skip_dist = skip_dist / self.map_resolution # grid coords
         for i in range(2, int(skip_dist)+1):
             for j in range(len(directions)):
@@ -186,8 +192,15 @@ class RightTurnNode(Node):
 
         self.get_logger().info(f"Offset Distance: {offset_distance}")
         
-        offset_x = offset_distance * math.cos(bot_yaw)
-        offset_y = offset_distance * math.sin(bot_yaw)
+        if math.cos(bot_yaw) == math.inf::
+            offset_x = offset_distance * 0
+        else:
+            offset_x = offset_distance * math.cos(bot_yaw)
+        if math.sin(bot_yaw) == math.inf:
+            offset_y = offset_distance * 0
+        else:
+            offset_y = offset_distance * math.sin(bot_yaw)
+            
         goal_x += offset_x
         goal_y += offset_y
 

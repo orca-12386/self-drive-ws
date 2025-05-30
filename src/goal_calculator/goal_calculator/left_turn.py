@@ -84,6 +84,28 @@ class LeftTurnNode(Node):
         angle = math.atan2(dy, dx)
         return angle
 
+    def is_behind(self, angle):
+        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        bot_yaw = round(bot_yaw / (math.pi / 2)) * (math.pi / 2)
+
+        angle_diff = angle - bot_yaw
+        angle_diff = (angle_diff + math.pi) % (2 * math.pi) - math.pi
+
+        return abs(angle_diff) > math.pi / 2
+
+    
+    def is_left(self, angle):
+        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        bot_yaw = round(bot_yaw/(math.pi/2)) * (math.pi/2)
+
+        if bot_yaw == 0:
+            return angle >= 0 and angle <= math.pi/2
+        elif bot_yaw == math.pi/2:
+            return angle >= math.pi/2 and angle <= math.pi
+        elif bot_yaw == math.pi:
+            return angle >= -math.pi and angle <= -math.pi/2
+        elif bot_yaw == -math.pi/2:
+            return angle >= -math.pi/2 and angle <= 0
 
     def find_intersection_direction(self):
             self.get_logger().info("Searching for Intersection Direction")
@@ -120,7 +142,6 @@ class LeftTurnNode(Node):
 
             bot_pose_x, bot_pose_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
             self.lane_offset = math.sqrt((bot_pose_x - closest_lane_x)**2 + (bot_pose_y- closest_lane_y)**2)
-            self.lane_offset = self.lane_offset * math.cos(angle)
             self.get_logger().info(f"Lane Offset: {self.lane_offset}")
 
             return direction, closest_lane_x, closest_lane_y
@@ -166,7 +187,7 @@ class LeftTurnNode(Node):
                 continue
             cluster_center = np.mean(cluster_points, axis=0)
             angle = self.calc_angle(closest_point, cluster_center)
-            if angle < 0 :
+            if self.is_behind(angle):
                 continue
             
             lane2_cluster_label = cluster_label
@@ -250,7 +271,7 @@ class LeftTurnNode(Node):
                     
                     angle = self.calc_angle((bot_x, bot_y), (x, y))
 
-                    if abs(angle - (math.pi)) < 0.5:
+                    if self.is_left(angle):
                         next_lane_point_x = x
                         next_lane_point_y = y
 
@@ -262,8 +283,14 @@ class LeftTurnNode(Node):
 
             if 0 <= next_lane_point_x < self.map_width and 0 <= next_lane_point_y < self.map_height:
 
-                offset_x = self.lane_offset * math.cos(self.perpendicular_direction)
-                offset_y = self.lane_offset * math.sin(self.perpendicular_direction)
+                if math.cos(self.perpendicular_direction) = math.inf:
+                    offset_x = self.lane_offset * 0
+                else:
+                    offset_x = self.lane_offset * math.cos(self.perpendicular_direction)
+                if math.sin(self.perpendicular_direction) == math.inf:
+                    offset_y = self.lane_offset * 0
+                else:
+                    offset_y = self.lane_offset * math.sin(self.perpendicular_direction)
 
                 goal_x = next_lane_point_x + offset_x
                 goal_y = next_lane_point_y + offset_y
@@ -291,12 +318,10 @@ class LeftTurnNode(Node):
             if self.Midpoint is not None and self.final_goal is None:
                 self.Midpoint.header.stamp = self.get_clock().now().to_msg()
                 self.goal_publisher.publish(self.Midpoint)
-                self.get_logger().info("Midpoint Published")
             
             if self.final_goal is not None:
                 self.final_goal.header.stamp = self.get_clock().now().to_msg()
                 self.goal_publisher.publish(self.final_goal)
-                self.get_logger().info("Final Goal Published")
 
     def goal_reached(self, goal):
         if goal is None:

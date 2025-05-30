@@ -149,6 +149,32 @@ class StraightActionServer(Node):
         angle = math.atan2(dy, dx)
         return angle
 
+    def is_right(self, angle):
+        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        bot_yaw = round(bot_yaw/(math.pi/2)) * (math.pi/2)
+
+        if bot_yaw == 0.0:
+            return angle >= (-math.pi/2) and angle <= (0.0)
+        elif bot_yaw == math.pi/2:
+            return angle >= (0.0) and angle <= (math.pi/2)
+        elif bot_yaw == math.pi:
+            return angle >= (math.pi/2) and angle <= (math.pi)
+        elif bot_yaw == -math.pi/2:
+            return angle >= (-math.pi) and angle <= (-math.pi/2)
+        
+    def is_left(self, angle):
+        bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
+        bot_yaw = round(bot_yaw/(math.pi/2)) * (math.pi/2)
+
+        if bot_yaw == 0.0:
+            return angle >= 0 and angle <= math.pi/2
+        elif bot_yaw == math.pi/2:
+            return angle >= math.pi/2 and angle <= math.pi
+        elif bot_yaw == math.pi:
+            return angle >= -math.pi and angle <= -math.pi/2
+        elif bot_yaw == -math.pi/2:
+            return angle >= -math.pi/2 and angle <= 0
+
     def find_lane(self, map_data, map_width, map_height, lane_name, origin, resolution):
         if self.bot_position is None:
             self.get_logger().warn("No Bot Pose Info")
@@ -176,12 +202,11 @@ class StraightActionServer(Node):
             if map_data[y, x] > 0:
 
                 angle = self.calc_angle((start_x, start_y), (x, y))
-                if lane_name == "Yellow":
-                    if (angle > math.pi/2 and angle < math.pi) or (angle < -math.pi/2 and angle > -math.pi):
-                        return (x, y)
-                elif lane_name == "White":
-                    if (angle < math.pi/2 and angle > 0) or (angle > -math.pi/2 and angle < 0):
-                        return (x, y)
+                if lane_name == "Yellow" and self.is_left(angle):
+                    return (x, y)
+                    
+                elif lane_name == "White" and self.is_right(angle):
+                    return (x, y)
 
             for dx, dy in directions:
                 nx, ny = x + dx, y + dy
@@ -272,8 +297,16 @@ class StraightActionServer(Node):
         self.goal_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
         self.goal_yaw = round(self.goal_yaw / (math.pi / 2)) * (math.pi / 2)  
 
-        goal_x = self.center_point[0] + self.offset * math.cos(self.goal_yaw)
-        goal_y = self.center_point[1] + self.offset * math.sin(self.goal_yaw)
+        if math.cos(self.goal_yaw) == math.inf:
+            offset_x = self.offset * 0
+        else:
+            offset_x = self.offset * math.cos(self.goal_yaw)
+        if math.sin(self.goal_yaw) == math.inf:
+            offset_y = self.offset * 0
+        else:
+            offset_y = self.offset * math.sin(self.goal_yaw)
+        goal_x = self.center_point[0] + offset_x
+        goal_y = self.center_point[1] + offset_y
 
         self.center_point = (goal_x, goal_y)
 
