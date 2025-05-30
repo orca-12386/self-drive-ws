@@ -19,7 +19,9 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
-            'merging = merging.merging:main'
+            'merging = merging.merging:main',
+            'merging_check = merging.merge_check:main',
+            'merging_tester = merging.merging_tester:main',
         ],
     },
 )
