@@ -18,9 +18,6 @@
 [submodule "src/direct_lidar_odometry"]
 	path = src/direct_lidar_odometry
 	url = git@github.com:W-OK-E/direct_lidar_odometry.git
-[submodule "src/manas_expo_nova"]
-	path = src/manas_expo_nova
-	url = git@github.com:Karthikeya819/manas_expo_nova.git
 [submodule "ros1-bridge/src/zed-ros-wrapper"]
 	path = ros1-bridge/src/zed-ros-wrapper
 	url = git@github.com:asmit-mit/zed-ros-wrapper.git
