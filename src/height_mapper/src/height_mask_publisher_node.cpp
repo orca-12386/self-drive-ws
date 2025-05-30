@@ -27,6 +27,9 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/segmentation/extract_clusters.h>
+#include <pcl/sample_consensus/ransac.h>
+#include <pcl/sample_consensus/sac_model_plane.h>
+#include <pcl/sample_consensus/sac_model_sphere.h>
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/filters/extract_indices.h>
 #include "tf2_ros/buffer.h"
@@ -143,9 +146,9 @@ public:
         this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
         std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
         
-        object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
-        object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.6f, 1.2f));
-        object_types.push_back(ObjectType("pedestrian", "pedestrian", 1.8f, 2.2f));
+        object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.5f));
+        object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.7f, 1.3f));
+        object_types.push_back(ObjectType("pedestrian", "pedestrian", 1.3f, 2.2f));
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
             color_sub_topic, 10, 
@@ -386,9 +389,12 @@ private:
         //     return;
         // }
         
-        // RCLCPP_INFO(this->get_logger(), "Point cloud has %zu points after filtering", pcl_pc->points.size());
+        RCLCPP_INFO(this->get_logger(), "Point cloud has %zu points after filtering", pcl_pc->points.size());
         
-        std::vector<pcl::PointIndices> cluster_indices = performClustering(pcl_pc, 0.1, 50, 5000);
+        std::vector<pcl::PointIndices> cluster_indices = performClustering(pcl_pc, 0.05, 50, 50000);
+        for (int i = 0; i < cluster_indices.size(); i++){
+            RCLCPP_INFO(this->get_logger(), "cluster %d size : %d", i, cluster_indices[i].indices.size());
+        }
         
         cv::Mat labels = assignLabelsToDepthImage(cluster_indices, pixel_to_point_map, depth_image.size());
         
@@ -417,27 +423,64 @@ private:
             }
         }
         
-        // RCLCPP_INFO(this->get_logger(), "Found %zu clusters with heights:", cluster_indices.size());
-        // for (size_t i = 1; i < max_obstacle_heights.size(); i++) {
-        //     RCLCPP_INFO(this->get_logger(), "  Cluster %zu: height %.2fm", i, max_obstacle_heights[i]);
-        // }
+        RCLCPP_INFO(this->get_logger(), "Found %zu clusters with heights:", cluster_indices.size());
+        for (size_t i = 1; i < max_obstacle_heights.size(); i++) {
+            RCLCPP_INFO(this->get_logger(), "  cluster %zu: height %.2fm", i, max_obstacle_heights[i]);
+        }
     }
 
 
     std::vector<pcl::PointIndices> performClustering(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, double cluster_tolerance, int min_cluster_size, int max_cluster_size) {
-        pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
-        tree->setInputCloud(cloud);
+        if (!this->sim){
+            std::vector<int> inliers;
+            pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p (new pcl::SampleConsensusModelPlane<pcl::PointXYZ> (cloud));
+            pcl::RandomSampleConsensus<pcl::PointXYZ> ransac (model_p);
+            ransac.setDistanceThreshold (.01);
+            ransac.computeModel();
+            ransac.getInliers(inliers);
+            pcl::ExtractIndices<pcl::PointXYZ> extract_inliers;
+            extract_inliers.setInputCloud(cloud);
+
+            pcl::PointIndices::Ptr inliers_ptr(new pcl::PointIndices);
+            inliers_ptr->indices = inliers;
+
+            extract_inliers.setIndices(inliers_ptr);
+            extract_inliers.setNegative(true);  // <-- This keeps outliers
+
+            // Create a new cloud to hold the outliers
+            pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_outliers(new pcl::PointCloud<pcl::PointXYZ>);
+            extract_inliers.filter(*cloud_outliers);
+
+            pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
+            tree->setInputCloud(cloud_outliers);
+            
+            std::vector<pcl::PointIndices> cluster_indices;
+            pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+            ec.setClusterTolerance(cluster_tolerance);
+            ec.setMinClusterSize(min_cluster_size);
+            ec.setMaxClusterSize(max_cluster_size);
+            ec.setSearchMethod(tree);
+            ec.setInputCloud(cloud_outliers);
+            ec.extract(cluster_indices);
+            
+            return cluster_indices;
+        }
+        else {
+            pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
+            tree->setInputCloud(cloud);
+            
+            std::vector<pcl::PointIndices> cluster_indices;
+            pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+            ec.setClusterTolerance(cluster_tolerance);
+            ec.setMinClusterSize(min_cluster_size);
+            ec.setMaxClusterSize(max_cluster_size);
+            ec.setSearchMethod(tree);
+            ec.setInputCloud(cloud);
+            ec.extract(cluster_indices);
+            
+            return cluster_indices;
+        }
         
-        std::vector<pcl::PointIndices> cluster_indices;
-        pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-        ec.setClusterTolerance(cluster_tolerance);
-        ec.setMinClusterSize(min_cluster_size);
-        ec.setMaxClusterSize(max_cluster_size);
-        ec.setSearchMethod(tree);
-        ec.setInputCloud(cloud);
-        ec.extract(cluster_indices);
-        
-        return cluster_indices;
     }
 
     cv::Mat assignLabelsToDepthImage(const std::vector<pcl::PointIndices>& cluster_indices, const std::vector<std::vector<int>>& pixel_to_point_map, const cv::Size& image_size) {
@@ -757,9 +800,9 @@ private:
         msg.header.stamp = this->now();
         msg.header.frame_id = "map";  
         
-        // RCLCPP_INFO(this->get_logger(), "x: %f to %f", minx, maxx);
-        // RCLCPP_INFO(this->get_logger(), "y: %f to %f", miny, maxy);
-        // RCLCPP_INFO(this->get_logger(), "z: %f to %f", minz, maxz);
+        RCLCPP_INFO(this->get_logger(), "x: %f to %f", minx, maxx);
+        RCLCPP_INFO(this->get_logger(), "y: %f to %f", miny, maxy);
+        RCLCPP_INFO(this->get_logger(), "z: %f to %f", minz, maxz);
 
         
         pub->publish(msg);
@@ -772,7 +815,7 @@ private:
         if (recv) {
             try {
                 if (!this->sim){
-                    transformStamped = tf_buffer_->lookupTransform("map", depth_image_msg->header.frame_id, depth_image_msg->header.stamp);
+                    transformStamped = tf_buffer_->lookupTransform("map", depth_image_msg->header.frame_id,  depth_image_msg->header.stamp);
                 }
                 publish_mask(rgb_image_msg, depth_image_msg, camera_info_msg);
                 publish_pointcloud(depth_image_msg, camera_info_msg, pointcloud_pub);
