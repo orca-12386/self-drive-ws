@@ -14,6 +14,13 @@ import tf2_geometry_msgs
 from math import sin, cos
 from scipy.spatial.transform import Rotation
 
+
+def get_stats_str(x, y, width, height):
+    s = ",".join([str(a) for a in [x,y,width,height]])
+    msg = String()
+    msg.data = s
+    return msg
+
 def euler_to_quat(euler):
     return Rotation.from_euler('xyz', euler).as_quat()
 
@@ -53,6 +60,8 @@ class TextDetectorNode(Node):
         self.image_pub = self.create_publisher(Image, '/annotated_image', 10)
         self.publisher = self.create_publisher(PointStamped, '/detected_text_info', 10)
         self.position_publisher = self.create_publisher(Point, '/detector/stop_sign/coordinates', 10)
+
+        self.stats_publisher = self.create_publisher(String, '/detector/stop_sign/stats', 10)
 
         self.get_logger().info("TextDetectorNode initialized")
 
@@ -97,16 +106,16 @@ class TextDetectorNode(Node):
             self.depth_stamp = msg.header.stamp
             self.depth_frame_id = msg.header.frame_id
             self.depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
-            self.get_logger().info(f"Depth Image recieved:")
+            # self.get_logger().info(f"Depth Image recieved:")
         except Exception as e:
             self.get_logger().error(f"Depth image conversion failed: {e}")
 
     def image_callback(self, msg):
         try:
-            color_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
-            self.get_logger().info(f"Color Image received:")
+            color_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+            # self.get_logger().info(f"Color Image received:")
         except Exception as e:
-            self.get_logger().error(f"Image conversion failed: {e}")
+            self.get_logger().error(f"Color image conversion failed: {e}")
             return
 
         if  not self.sim:
@@ -117,7 +126,8 @@ class TextDetectorNode(Node):
                 return
 
         results = self.reader.readtext(color_image)
-        self.get_logger().info(f"Detected text: {results}")
+        if len(results) >= 2:
+            self.get_logger().info(f"Detected text: {results[-2:]}")
         for (bbox, text, confidence) in results:
             if text.strip().lower() == self.target_text.lower():
                 pts = np.array(bbox).astype(int)
@@ -173,6 +183,8 @@ class TextDetectorNode(Node):
                     self.detected_point.y = point.y
                     self.detected_point.z = point.z
 
+                    #pub here
+                    self.stats_publisher.publish(get_stats_str(x, y, w, h))
                     self.position_publisher.publish(self.detected_point)
                     self.get_logger().info(f"Detected Stop Sign: {self.detected_point.x}, {self.detected_point.y}, {self.detected_point.z}")
                 break  
