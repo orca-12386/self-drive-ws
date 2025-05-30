@@ -34,6 +34,8 @@ setup(
             # 'lane_follow = goal_calculator.lane_follow:main',
             'lane_change = goal_calculator.lane_change:main',
             'right_turn = goal_calculator.right_turn:main',
+            'right_turn_hard_coded = goal_calculator.right_turn_hard_coded:main',
+            'left_turn_hard_coded = goal_calculator.left_turn_hard_coded:main',
             'left_turn = goal_calculator.left_turn:main',
             'stop_server= goal_calculator.StopServer:main',
             'lane_change_yellow = goal_calculator.lane_change_yellow:main',
