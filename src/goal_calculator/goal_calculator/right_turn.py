@@ -20,7 +20,7 @@ def quat_to_euler(quat):
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local/near', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.action_server = ActionServer(self, RightTurn, 'RightTurn', execute_callback=self.execute_callback)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -75,14 +75,13 @@ class RightTurnNode(Node):
     def is_valid_point(self, src, next_point):
         angle = self.calc_angle(src, next_point)
         bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
-        bot_yaw = round(bot_yaw/(math.pi/2)) * (math.pi/2)
-        if bot_yaw == 0.0:
+        if -math.pi / 4 < bot_yaw < math.pi / 4:
             return angle >= (-math.pi/2) and angle <= (0.0)
-        elif bot_yaw == math.pi/2:
+        elif math.pi / 4 <= bot_yaw <= 3 * math.pi / 4:
             return angle >= (0.0) and angle <= (math.pi/2)
-        elif bot_yaw == math.pi:
+        elif (-math.pi <= bot_yaw < -3 * math.pi / 4) or (3 * math.pi / 4 < bot_yaw <= math.pi):
             return angle >= (math.pi/2) and angle <= (math.pi)
-        elif bot_yaw == -math.pi/2:
+        elif -3 * math.pi / 4 <= bot_yaw <= -math.pi / 4:
             return angle >= (-math.pi) and angle <= (-math.pi/2)
 
     def find_right_lane_point(self, min_cluster_size=15, eps=25):
@@ -230,7 +229,7 @@ class RightTurnNode(Node):
         if self.goal_pose is None:
             return False
         distance = math.sqrt((self.goal_pose.pose.position.x - self.bot_position.x)**2 + (self.goal_pose.pose.position.y - self.bot_position.y)**2)
-        return distance <= 1.0
+        return distance < 0.2
 
     async def execute_callback(self, goal_handle):
         self.get_logger().info("Executing Right Turn")
