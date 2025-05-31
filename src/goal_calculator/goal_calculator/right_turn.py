@@ -20,7 +20,7 @@ def quat_to_euler(quat):
 class RightTurnNode(Node):
     def __init__(self):
         super().__init__('right_turn_node')
-        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local', self.map_callback, 10)
+        self.map_subscription = self.create_subscription(OccupancyGrid, '/map/white/local/near', self.map_callback, 10)
         self.odom_subscription = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.action_server = ActionServer(self, RightTurn, 'RightTurn', execute_callback=self.execute_callback)
         self.goal_publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -230,7 +230,7 @@ class RightTurnNode(Node):
         if self.goal_pose is None:
             return False
         distance = math.sqrt((self.goal_pose.pose.position.x - self.bot_position.x)**2 + (self.goal_pose.pose.position.y - self.bot_position.y)**2)
-        return distance < 0.2
+        return distance <= 1.0
 
     async def execute_callback(self, goal_handle):
         self.get_logger().info("Executing Right Turn")

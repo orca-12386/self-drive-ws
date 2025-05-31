@@ -101,7 +101,6 @@ private:
 
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     {
-        got_odom = true;
 
         current_pose.world_pose.x = msg->pose.pose.position.x;
         current_pose.world_pose.y = msg->pose.pose.position.y;
@@ -112,12 +111,12 @@ private:
 
         double roll, pitch, yaw;
         tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
-
+            
         current_pose.roll = roll;
         current_pose.pitch = pitch;
         current_pose.yaw = yaw;
 
-        if (!got_odom ||
+        if (
             Utils::worldDistance(prev_pose.world_pose, current_pose.world_pose) > 3) {
             prev_pose = current_pose;
         }
@@ -126,6 +125,8 @@ private:
             current_pose.map_pose =
             Utils::getMapPoseFromWorldPose(current_pose.world_pose, current_white_map);
         }
+
+        got_odom = true;
     }
 
     void clearIntersection()

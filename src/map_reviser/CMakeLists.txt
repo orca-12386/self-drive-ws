@@ -29,7 +29,7 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(interfaces REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
-add_executable(intersection_clearing_service src/intersection_clearer.cpp)
+add_executable(intersection_clearing_service src/new_intersection_clearer.cpp)
 
 ament_target_dependencies(intersection_clearing_service
   rclcpp

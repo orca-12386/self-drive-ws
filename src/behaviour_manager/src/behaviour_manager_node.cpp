@@ -655,8 +655,8 @@ public:
                 current_turn_index = 0;
                 detection_limits = {
                     {"traffic_drum", 5},
-                    {"stop_sign", 3},
-                    {"pedestrian", 3},
+                    {"stop_sign", 5},
+                    {"pedestrian", 5},
                     {"tyre", 5},
                     {"pothole", 5}
                 };
@@ -820,11 +820,12 @@ private:
     }
 
     void right_turn() {
-        if(!done) {
-            right_turn_action();
+        if(check_intersection() && !done) {
             done = true;
+            // stop_intersection_action();
+            right_turn_action();
         }
-        if(is_detected.at("traffic_drum")) {
+        else if(is_detected.at("traffic_drum")) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {

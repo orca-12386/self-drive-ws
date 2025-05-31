@@ -14,3 +14,9 @@
 [submodule "ros1-bridge/src/zed-ros-wrapper"]
 	path = ros1-bridge/src/zed-ros-wrapper
 	url = git@github.com:asmit-mit/zed-ros-wrapper.git
+[submodule "src/xbox_teleop"]
+	path = src/xbox_teleop
+	url = https://github.com/orca-12386/xbox_teleop
+[submodule "src/manas_expo_nova"]
+	path = src/manas_expo_nova
+	url = git@github.com:Karthikeya819/manas_expo_nova.git
