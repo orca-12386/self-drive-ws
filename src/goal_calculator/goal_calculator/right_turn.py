@@ -179,6 +179,8 @@ class RightTurnNode(Node):
             return
         
         right_map_x, right_map_y = self.right_lane_point
+        bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
+        angle = self.calc_angle((bot_x, bot_y), (right_map_x, right_map_y))
         right_world_x, right_world_y = self.map_to_world(right_map_x, right_map_y)
 
         bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
@@ -189,7 +191,7 @@ class RightTurnNode(Node):
 
         right_lane_world_x, right_lane_world_y = self.map_to_world(self.right_lane_point[0], self.right_lane_point[1])
         offset_distance = math.sqrt((right_lane_world_x - self.bot_position.x)**2 + (right_lane_world_y - self.bot_position.y)**2)
-
+        offset_distance = offset_distance * math.cos(angle)
         self.get_logger().info(f"Offset Distance: {offset_distance}")
         
         if math.cos(bot_yaw) == math.inf:
