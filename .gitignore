@@ -8,3 +8,4 @@ __pycache__/
 os-122220002210-metadata.json
 *.gv
 *.pdf
+rosbag*

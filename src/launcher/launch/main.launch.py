@@ -446,6 +446,22 @@ def generate_launch_description():
         )
     ]
 
+    launch_detector_qual = [
+        Node(
+            package='detector_cpp',
+            executable='barrel_detector_node',
+            name='barrel_detector_node',
+            parameters = [
+                {
+                    'sim': SIM,
+                    'depth_sub_topic': depth_sub_topic,
+                    'color_sub_topic': color_sub_topic,
+                    'camera_info_sub_topic': camera_info_sub_topic
+                }
+            ]
+        )
+    ]
+
     launch_intersection_detector = [
         Node(
             package='intersection_detector',
@@ -547,11 +563,14 @@ def generate_launch_description():
     launch_description.extend(launch_map_ensemble)
 
     if ENABLE_DETECTION:
-        launch_description.extend(launch_detector_constant)
-        if DETECTION_MODE == 0:
-            launch_description.extend(launch_detector_model)
-        if DETECTION_MODE == 1:
-            launch_description.extend(launch_detector_height)
+        if DETECTION_MODE == 2:
+            launch_description.extend(launch_detector_qual)
+        else:
+            launch_description.extend(launch_detector_constant)
+            if DETECTION_MODE == 0:
+                launch_description.extend(launch_detector_model)
+            if DETECTION_MODE == 1:
+                launch_description.extend(launch_detector_height)
         if ENABLE_GOALS:
             launch_description.extend(launch_intersection_detector)    
             launch_description.extend(launch_goal_calculators)

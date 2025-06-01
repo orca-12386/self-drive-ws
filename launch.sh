@@ -4,7 +4,7 @@
 COMMANDS=(
     # Local commands (outside container)
     "ros1_bridge~source install/setup.bash && ros2 run ros1_bridge dynamic_bridge --bridge-all-topics~local"
-    "launcher~sleep 4 && source install/setup.bash && ros2 launch launcher main.launch.py | grep behaviour_manager~local"
+    "launcher~sleep 4 && source install/setup.bash && ros2 launch launcher main.launch.py | grep -e behaviour_manager -e barrel_detector~local"
     "steve_com~sleep 6 && source install/setup.bash && ./steve_compy_ros2~local"
     "teleop_control~sleep 6 && source install/setup.bash && ros2 run manas_expo_nova teleop_control~local"
     # Container commands (inside Docker)

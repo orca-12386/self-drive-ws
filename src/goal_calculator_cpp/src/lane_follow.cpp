@@ -300,7 +300,7 @@ private:
         
         const int width = map->info.width;
         const int height = map->info.height;
-        const int max_radius = static_cast<int>(std::ceil(5.0 / map->info.resolution));
+        const int max_radius = static_cast<int>(std::ceil(3.0 / map->info.resolution));
         
         // Radial search: check all points at each radius level
         for(int radius = 1; radius <= max_radius && running; ++radius) {
@@ -337,7 +337,7 @@ private:
         std::array<int,2> dst;
         bool status = get_nearest_point_bfs(src, map, dst);
         if(!status) {
-            return 1e9;
+            return 100;
         } else {
             return calculate_distance(src, dst);
         }
@@ -451,7 +451,7 @@ private:
 
 
     bool validate_goal(std::array<double, 2> goal) {
-        bool angle_condition = calculate_goal_angle(goal, goals) > 110;
+        bool angle_condition = calculate_goal_angle(goal, goals) > 100;
         std::array<int, 2> goal_grid = convert_to_grid_coords(goal, map1_msg);
         bool obstacle1_condition = map1_msg->data[goal_grid[1]*map1_msg->info.width + goal_grid[0]] <= 0;
         bool obstacle2_condition = map2_msg->data[goal_grid[1]*map2_msg->info.width + goal_grid[0]] <= 0;
@@ -459,9 +459,10 @@ private:
         bool lane2_clearance_condition = get_nearest_point_distance(goal_grid, map2_msg) > 0.4;
         bool not_previous_goal = true;
         if(!this->start) {
-            not_previous_goal = calculate_distance(goal, prev_goal) > 0.4;
+            not_previous_goal = calculate_distance(goal, prev_goal) > 0.1;
         }
-        return angle_condition && obstacle1_condition && obstacle2_condition && lane1_clearance_condition && lane2_clearance_condition && not_previous_goal;
+        bool max_bot_dist = calculate_distance(goal, {odometry_msg->pose.pose.position.x, odometry_msg->pose.pose.position.y}) < 7;
+        return angle_condition && obstacle1_condition && obstacle2_condition && not_previous_goal && max_bot_dist && lane1_clearance_condition && lane2_clearance_condition;
     }
 
     void publish_goal(const nav_msgs::msg::Odometry::SharedPtr odom, const nav_msgs::msg::OccupancyGrid::SharedPtr map1, const nav_msgs::msg::OccupancyGrid::SharedPtr map2) {

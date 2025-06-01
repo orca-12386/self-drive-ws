@@ -673,7 +673,7 @@ public:
                 break;
             case 1:
                 detection_limits = {
-                    {"traffic_drum", 2},
+                    {"traffic_drum", 1.5},
                 };
                 break;
             case 2:
@@ -816,11 +816,11 @@ private:
 
     void left_turn() {
         if(!done) {
-            if(check_intersection()) {
-                done = true;
-                stop_intersection_action();
+            // if(check_intersection()) {
+            //     done = true;
+            //     stop_intersection_action();
                 left_turn_action();
-            }
+            // }
         }
         else if(is_detected.at("traffic_drum")) {
             stop_in_lane_action();
@@ -834,11 +834,11 @@ private:
 
     void right_turn() {
         if(!done) {
-            if(check_intersection()) {
-                done = true;
-                stop_intersection_action();
+            // if(check_intersection()) {
+            //     done = true;
+            //     stop_intersection_action();
                 right_turn_action();
-            }
+            // }
         }
         else if(is_detected.at("traffic_drum")) {
             stop_in_lane_action();
