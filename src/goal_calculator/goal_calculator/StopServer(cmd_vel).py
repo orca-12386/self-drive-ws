@@ -43,7 +43,7 @@ class StopServer(Node):
         self.get_logger().info("Stop Action Received")
         
         self.goal_pose = PoseStamped()
-        self.goal_pose.header.frame_id = 'map'
+        self.goal_pose.header.frame_id = 'odom'
         self.goal_pose.header.stamp = self.get_clock().now().to_msg()
         self.goal_pose.pose.position = self.bot_position
         self.goal_pose.pose.orientation = self.bot_orientation

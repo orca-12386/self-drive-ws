@@ -119,7 +119,7 @@ private:
       base_link_cloud->points.push_back(cloudPointToBaselink(point));
     }
 
-    odom_cloud->header.frame_id = "map";
+    odom_cloud->header.frame_id = "odom";
     odom_cloud->width = msg->width; //odom_cloud->points.size() initially but that causes errors in the pc_mapper
     odom_cloud->height = msg->height;
     odom_cloud->is_dense = true;

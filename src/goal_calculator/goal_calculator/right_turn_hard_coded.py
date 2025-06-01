@@ -88,7 +88,7 @@ class RightTurnHardCoded(Node):
         goal_x_world, goal_y_world = self.map_to_world(goal_x, goal_y)
 
         self.goal_pose = PoseStamped()
-        self.goal_pose.header.frame_id = 'map'
+        self.goal_pose.header.frame_id = 'odom'
         self.goal_pose.header.stamp = self.get_clock().now().to_msg()
         self.goal_pose.pose.position.x = goal_x_world
         self.goal_pose.pose.position.y = goal_y_world

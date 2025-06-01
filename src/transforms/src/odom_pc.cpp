@@ -25,7 +25,7 @@ public:
     // Parameters
 
     this->declare_parameter<std::string>("pointcloud_topic", "/zed_node/point_cloud/cloud_registered");
-    this->declare_parameter<std::string>("target_frame", "map");
+    this->declare_parameter<std::string>("target_frame", "odom");
     this->declare_parameter<std::string>("pc_pub_topic", "/nav/point_cloud");
 
     

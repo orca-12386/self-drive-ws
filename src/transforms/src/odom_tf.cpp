@@ -28,7 +28,7 @@ private:
         // Create and send TransformStamped
         geometry_msgs::msg::TransformStamped t;
         t.header.stamp = now();
-        t.header.frame_id = "map";
+        t.header.frame_id = "odom";
         t.child_frame_id = "base_link";
 
         t.transform.translation.x = msg->pose.pose.position.x;
@@ -42,7 +42,7 @@ private:
         // Create transformed Odometry message
         nav_msgs::msg::Odometry transformed_odom = *msg;
         transformed_odom.child_frame_id = "base_link";
-        transformed_odom.header.frame_id = "map";
+        transformed_odom.header.frame_id = "odom";
         transformed_odom.pose.pose.position.x *= 1.0;
         transformed_odom.pose.pose.position.y *= -1.0;  // Invert Y position
         transformed_odom.twist.twist.linear.y *= -1.0;  // Invert Y velocity

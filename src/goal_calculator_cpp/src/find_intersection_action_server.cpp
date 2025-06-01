@@ -252,7 +252,7 @@ private:
     double goal_y = white_wp.y - 0.715 * sin(goal_theta);
 
     geometry_msgs::msg::PoseStamped goal;
-    goal.header.frame_id = "map";
+    goal.header.frame_id = "odom";
     goal.header.stamp = this->now();
     
     goal.pose.position.x = goal_x;

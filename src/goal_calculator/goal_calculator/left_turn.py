@@ -214,7 +214,7 @@ class LeftTurnNode(Node):
         self.perpendicular_direction = direction + math.pi/2
         
         self.Midpoint = PoseStamped()
-        self.Midpoint.header.frame_id = 'map'
+        self.Midpoint.header.frame_id = 'odom'
         self.Midpoint.header.stamp = self.get_clock().now().to_msg()
         self.Midpoint.pose.position.x = mid_x_world
         self.Midpoint.pose.position.y = mid_y_world
@@ -300,7 +300,7 @@ class LeftTurnNode(Node):
                 goal_x_world, goal_y_world = self.map_to_world(goal_x, goal_y)
 
                 self.final_goal = PoseStamped()
-                self.final_goal.header.frame_id = 'map'
+                self.final_goal.header.frame_id = 'odom'
                 self.final_goal.header.stamp = self.get_clock().now().to_msg()
                 self.final_goal.pose.position.x = goal_x_world
                 self.final_goal.pose.position.y = goal_y_world

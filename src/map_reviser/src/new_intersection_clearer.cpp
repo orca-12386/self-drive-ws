@@ -163,12 +163,6 @@ private:
         const std::array<int, 2> src, 
         double range, std::array<int, 2>& dst) {
 
-        // Check if maps have similar characteristics
-        if (std::abs(yellow_map->info.resolution - white_map->info.resolution) > 0.001) {
-            RCLCPP_WARN(this->get_logger(), "Map resolutions differ: yellow=%.3f, white=%.3f", 
-                       yellow_map->info.resolution, white_map->info.resolution);
-        }
-
         std::queue<Point> queue;
         std::unordered_set<Point, PointHash> visited;
 

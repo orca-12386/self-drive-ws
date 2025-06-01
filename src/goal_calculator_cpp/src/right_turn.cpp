@@ -191,7 +191,7 @@ private:
         odom_recv = false;
         
         goal_pose_msg = std::make_shared<geometry_msgs::msg::PoseStamped>();
-        goal_pose_msg->header.frame_id = "map";
+        goal_pose_msg->header.frame_id = "odom";
         goal_pose_msg->header.stamp = this->now();
         goal_pose_msg->pose.position.z = 0.0;
         goal_pose_msg->pose.orientation.x = 0.0;
