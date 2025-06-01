@@ -13,9 +13,15 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/point.hpp>
+
 
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/LinearMath/Matrix3x3.h"
+
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"  
 
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
@@ -125,6 +131,8 @@ public:
             "/odom", 10, 
             std::bind(&LaneMapperNode::odomCallback, this, std::placeholders::_1));
 
+        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         // Initialise subscription flags
         depth_recv = false;
@@ -244,8 +252,27 @@ private:
         p.x = x;
         p.y = y;
         p.z = z;
-        //log_debug(std::string("convert_depth_to_point: ")+std::to_string(p.x)+std::string(",")+std::to_string(p.z));
         return p;
+    }
+
+    bool convert_to_global_point(Point& p) {
+        geometry_msgs::msg::PointStamped point_in, point_out;
+        point_in.header.frame_id = "base_link";
+        point_in.header.stamp = depth_image_msg->header.stamp;
+        point_in.point.x = p.x;
+        point_in.point.y = p.y;
+        point_in.point.z = p.z;
+        try {
+            tf2::doTransform(point_in, point_out, transformStamped);
+            p.x = point_out.point.x;
+            p.y = point_out.point.y;
+            p.z = point_out.point.z;
+        }
+        catch (tf2::TransformException &ex) {
+            RCLCPP_WARN(this->get_logger(), "Could not transform point: %s.", ex.what());
+            return false;
+        }
+        return true;
     }
 
     void convert_to_grid_coords(Point& p, double refx, double refy) {
@@ -302,11 +329,19 @@ private:
         Timer t4 = Timer("Point vector");
 
         points.clear();
+
+        bool status;
         for (const auto& pt : locations) {
             double d = static_cast<double>(depth_image.at<float>(pt.y, pt.x)); // Access color pixel
             Point p = convert_depth_to_point(pt, d, camera_info);
+            status = true;
             if(p.y < y_threshold && p.z<z_threshold) {
-                points.push_back(p);
+                if(!this->sim) {
+                    status = convert_to_global_point(p);
+                }
+                if(status) {
+                    points.push_back(p);
+                }
             }
         }
 
@@ -318,8 +353,14 @@ private:
         for (const auto& pt : locations) {
             double d = static_cast<double>(depth_image.at<float>(pt.y, pt.x));
             Point p = convert_depth_to_point(pt, d, camera_info);
+            status = true;
             if(p.y < y_threshold && p.z<z_threshold) {
-                antipoints.push_back(p);
+                if(!this->sim) {
+                    status = convert_to_global_point(p);
+                }
+                if(status) {
+                    antipoints.push_back(p);
+                }
             }
         }
 
@@ -351,9 +392,13 @@ private:
         std::fill(instant_map_msg->data.begin(), instant_map_msg->data.end(), 0);
 
         for (auto it = begin (points); it != end (points); ++it) {
-            convert_to_grid_coords(*it, 0, 0);
-            rotate_local_grid(*it, yaw);
-            get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
+            if(this->sim) {
+                convert_to_grid_coords(*it, 0, 0);
+                rotate_local_grid(*it, yaw);
+                get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
+            } else {
+                convert_to_grid_coords(*it, grid_origin_x, grid_origin_y);
+            }
             if(it->global_grid_y < grid_height && it->global_grid_y >= 0 && it->global_grid_x >= 0 && it->global_grid_x < grid_width) {
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
                 instant_map_msg->data[index] = 100;
@@ -451,6 +496,9 @@ private:
         recv = recv && camera_info_recv;
         recv = recv && odometry_recv;
         if(recv) {
+            if(!this->sim) {
+                transformStamped = tf_buffer_->lookupTransform("odom", depth_image_msg->header.frame_id, depth_image_msg->header.stamp);
+            }
             get_points(mask_image_msg, depth_image_msg, camera_info_msg);
         }
     }
@@ -502,6 +550,10 @@ private:
     std::shared_ptr<nav_msgs::msg::OccupancyGrid> full_map_msg;
     bool sim;
     double log_odds_lower_clamp, log_odds_upper_clamp;
+
+    geometry_msgs::msg::TransformStamped transformStamped;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 };
 
 
