@@ -145,7 +145,7 @@ public:
         
         object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
         object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.6f, 1.2f));
-        object_types.push_back(ObjectType("pedestrian", "pedestrian", 1.8f, 2.2f));
+        object_types.push_back(ObjectType("pedestrian", "pedestrian", 1.5f, 2.0f));
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
             color_sub_topic, 10, 
@@ -344,7 +344,7 @@ private:
         return std::sqrt(dx*dx + dy*dy + dz*dz);
     }
     
-    void computeObstacleLabels(const cv::Mat& depth_image, sensor_msgs::msg::CameraInfo::SharedPtr camera_info, cv::Mat& obstacle_labels, std::vector<float>& max_obstacle_heights) {
+    void computeObstacleLabels(const cv::Mat& depth_image, sensor_msgs::msg::CameraInfo::SharedPtr camera_info, cv::Mat& obstacle_labels, std::vector<float>& max_obstacle_heights, std::vector<float>& min_obstacle_heights) {
 
         obstacle_labels = cv::Mat::zeros(depth_image.rows, depth_image.cols, CV_32S);
         
@@ -363,7 +363,7 @@ private:
                 if (this->sim){  
                 base_point = cloudPointToBaselink(base_point);
                 }
-                if (base_point.x > 1.5 && base_point.x < 15 && std::abs(base_point.y) < 10 && base_point.z > 0.1 && base_point.z < 3.0) {
+                if (base_point.x > 1.5 && base_point.x < 10 && std::abs(base_point.y) < 10 && base_point.z > 0.1 && base_point.z < 3.0) {
                     pcl::PointXYZ pcl_p;
                     pcl_p.x = base_point.x;
                     pcl_p.y = base_point.y;
@@ -394,6 +394,7 @@ private:
         
         int num_labels = cluster_indices.size() + 1; 
         max_obstacle_heights.resize(num_labels, 0.0f);
+        min_obstacle_heights.resize(num_labels, std::numeric_limits<float>::infinity());
         
         for (int i = 0; i < depth_image.rows; i++) {
             for (int j = 0; j < depth_image.cols; j++) {
@@ -409,8 +410,8 @@ private:
                         obstacle_labels.at<int>(i, j) = label;
                         
                         if (label < max_obstacle_heights.size()) {
-                            max_obstacle_heights[label] = std::max(max_obstacle_heights[label], 
-                                                                static_cast<float>(base_point.z));
+                            min_obstacle_heights[label] = std::min(min_obstacle_heights[label], static_cast<float>(base_point.z));
+                            max_obstacle_heights[label] = std::max(max_obstacle_heights[label], static_cast<float>(base_point.z));
                         }
                     }
                 }
@@ -508,15 +509,19 @@ private:
             
             cv::Mat obstacle_labels;
             std::vector<float> max_obstacle_heights;
+            std::vector<float> min_obstacle_heights;
             
-            computeObstacleLabels(depth_image, camera_info, obstacle_labels, max_obstacle_heights);
+            computeObstacleLabels(depth_image, camera_info, obstacle_labels, max_obstacle_heights, min_obstacle_heights);
             
             std::vector<std::string> obstacle_types(max_obstacle_heights.size(), "");
             for (size_t i = 1; i < max_obstacle_heights.size(); i++) {
                 float max_height = max_obstacle_heights[i];
-                
+                float min_height = min_obstacle_heights[i];
+                RCLCPP_INFO(this->get_logger(), "MAX HEIGHT: %f", max_height);
+                RCLCPP_INFO(this->get_logger(), "MIN_HEIGHT: %f", min_height);
+                RCLCPP_INFO(this->get_logger(), "HEIGHT: %f", abs(max_height - min_height));
                 for (const auto& obj_type : object_types) {
-                    if (max_height >= obj_type.min_height && max_height <= obj_type.max_height) {
+                    if (abs(max_height - min_height) > obj_type.min_height && abs(max_height - min_height) < obj_type.max_height) {
                         obstacle_types[i] = obj_type.name;
                         // RCLCPP_INFO(this->get_logger(), "Cluster %zu (height %.2fm) classified as %s", 
                         //            i, max_height, obj_type.name.c_str());
@@ -755,7 +760,7 @@ private:
         sensor_msgs::msg::PointCloud2 msg;
         pcl::toROSMsg(cloud, msg);
         msg.header.stamp = this->now();
-        msg.header.frame_id = "map";  
+        msg.header.frame_id = "odom";  
         
         // RCLCPP_INFO(this->get_logger(), "x: %f to %f", minx, maxx);
         // RCLCPP_INFO(this->get_logger(), "y: %f to %f", miny, maxy);
@@ -772,7 +777,7 @@ private:
         if (recv) {
             try {
                 if (!this->sim){
-                    transformStamped = tf_buffer_->lookupTransform("map", depth_image_msg->header.frame_id, depth_image_msg->header.stamp);
+                    transformStamped = tf_buffer_->lookupTransform("odom", depth_image_msg->header.frame_id, depth_image_msg->header.stamp);
                 }
                 publish_mask(rgb_image_msg, depth_image_msg, camera_info_msg);
                 publish_pointcloud(depth_image_msg, camera_info_msg, pointcloud_pub);
