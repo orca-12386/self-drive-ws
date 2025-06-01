@@ -143,8 +143,8 @@ public:
         this->declare_parameter("camera_info_sub_topic", rclcpp::PARAMETER_STRING);
         std::string camera_info_sub_topic = this->get_parameter("camera_info_sub_topic").as_string();
         
-        object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
-        object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.6f, 1.2f));
+        // object_types.push_back(ObjectType("tyre", "tyre", 0.1f, 0.6f));
+        object_types.push_back(ObjectType("traffic_drum", "traffic_drum", 0.5f, 1.2f));
         object_types.push_back(ObjectType("pedestrian", "pedestrian", 1.5f, 2.0f));
         
         rgb_sub = this->create_subscription<sensor_msgs::msg::Image>(
@@ -388,7 +388,7 @@ private:
         
         // RCLCPP_INFO(this->get_logger(), "Point cloud has %zu points after filtering", pcl_pc->points.size());
         
-        std::vector<pcl::PointIndices> cluster_indices = performClustering(pcl_pc, 0.1, 50, 50000);
+        std::vector<pcl::PointIndices> cluster_indices = performClustering(pcl_pc, 0.1, 500, 100000);
         
         cv::Mat labels = assignLabelsToDepthImage(cluster_indices, pixel_to_point_map, depth_image.size());
         
@@ -624,8 +624,8 @@ private:
 
                         bool matched = false;
                         for (auto& detection : object_detections) {
-                            if (detection.type == obj_type.name && distance(detection.global_position, global_point) < 0.8) {
-                                detection.log_odds += 0.1;
+                            if (detection.type == obj_type.name && distance(detection.global_position, global_point) < 1.0) {
+                                detection.log_odds += 0.3;
                                 if (detection.log_odds > 5.0) {
                                     detection.log_odds = 5.0;
                                 }
