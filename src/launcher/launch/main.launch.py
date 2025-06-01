@@ -119,8 +119,6 @@ def generate_launch_description():
             'imu_topic', default_value='/lidar/imu'
         )
 
-        zed_wrapper_dir = get_package_share_directory('zed_wrapper')
-
         dlo_dir= get_package_share_directory('direct_lidar_odometry')
 
         transforms_dir = get_package_share_directory('transforms')
@@ -236,10 +234,19 @@ def generate_launch_description():
                 'map_pub_topic': '/map/yellow'
             }]
         ),
+        # Node(
+        #     package='map_reviser',
+        #     executable='nearest_lane_mapper_node',
+        #     name='nearest_lane_mapper_node'
+        # ),
         Node(
-            package='map_reviser',
-            executable='nearest_lane_mapper_node',
-            name='nearest_lane_mapper_node'
+            package='topic_remapper',
+            executable='occupancy_grid_topic_remapper_node',
+            name='occupancy_grid_topic_remapper_node',
+            parameters=[{
+                'default_sub_topic': '/map/white/local',
+                'pub_topic': '/map/white/local/near',
+            }]       
         ),
         Node(
             package='map_reviser',
@@ -277,17 +284,17 @@ def generate_launch_description():
                 'assemble_mode': 1
             }]
         ),
-        Node(
-            package='multimap_assembler',
-            executable='multimap_assembler_node',
-            name='far_multimap_assembler_node',
-            parameters=[{
-                'map1_sub_topic': '/map/white/local',
-                'map2_sub_topic': '/map/white/local/near',
-                'map_pub_topic': '/map/white/local/far',
-                'assemble_mode': 0
-            }]
-        ),
+        # Node(
+        #     package='multimap_assembler',
+        #     executable='multimap_assembler_node',
+        #     name='far_multimap_assembler_node',
+        #     parameters=[{
+        #         'map1_sub_topic': '/map/white/local',
+        #         'map2_sub_topic': '/map/white/local/near',
+        #         'map_pub_topic': '/map/white/local/far',
+        #         'assemble_mode': 0
+        #     }]
+        # ),
         Node(
             package='multimap_assembler',
             executable='multimap_assembler_node',
@@ -505,6 +512,14 @@ def generate_launch_description():
                 'default_sub_topic': '/goal_pose',
                 'pub_topic': '/move_base_simple/goal',
             }]       
+        )
+    ]
+
+    launch_odom_tf = [
+        Node(
+            package='transforms',
+            executable='odom_tf',
+            name='odom_tf'
         )
     ]
 

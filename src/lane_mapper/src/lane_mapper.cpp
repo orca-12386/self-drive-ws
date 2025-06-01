@@ -166,7 +166,7 @@ public:
 
         instant_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
         instant_map_msg->data.resize(grid_height*grid_width, 0);
-        instant_map_msg->header.frame_id = "map";
+        instant_map_msg->header.frame_id = "odom";
         instant_map_msg->info.width = grid_width;
         instant_map_msg->info.height = grid_height;
         instant_map_msg->info.resolution = grid_resolution;
@@ -177,7 +177,7 @@ public:
 
         full_map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
         full_map_msg->data.resize(grid_height*grid_width, -1);
-        full_map_msg->header.frame_id = "map";
+        full_map_msg->header.frame_id = "odom";
         full_map_msg->info.width = grid_width;
         full_map_msg->info.height = grid_height;
         full_map_msg->info.resolution = grid_resolution;

@@ -110,7 +110,7 @@ class RightTurnHardCoded(Node):
         if self.goal_pose is None:
             return False
         distance = math.sqrt((self.goal_pose.pose.position.x - self.bot_position.x)**2 + (self.goal_pose.pose.position.y - self.bot_position.y)**2)
-        return distance < 0.2
+        return distance < 1.0
 
 
     def execute_callback(self, goal_handle):

@@ -42,7 +42,6 @@ private:
         map1_recv = false;
         map2_recv = false;
         map_msg = std::make_shared<nav_msgs::msg::OccupancyGrid>();
-        map_msg->header.frame_id = "map";
     }
 
     void map1Callback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
@@ -71,6 +70,7 @@ private:
         map_msg->info.origin.position.y = map1->info.origin.position.y;
         map_msg->info.origin.position.z = map1->info.origin.position.z;
         map_msg->info.origin.orientation.w = map1->info.origin.orientation.w;
+        map_msg->header.frame_id = map1_msg->header.frame_id;
 
         int index;
         for(int i=0;i<map_msg->info.height;i++) {

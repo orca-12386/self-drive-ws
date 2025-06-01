@@ -115,11 +115,17 @@ private:
             // yellow_mask_lower = cv::Scalar(0, 13, 220); 
             // yellow_mask_upper = cv::Scalar(147, 82, 252);
 
-            // IGVC Night
-            white_mask_hsv_lower = cv::Scalar(0, 0, 208);
-            white_mask_hsv_upper = cv::Scalar(43, 255, 255);
-            yellow_mask_lower = cv::Scalar(0, 117, 88); 
+            // IGVC Day
+            white_mask_hsv_lower = cv::Scalar(0, 0, 180);
+            white_mask_hsv_upper = cv::Scalar(180, 80, 255);
+            yellow_mask_lower = cv::Scalar(0, 80, 190); 
             yellow_mask_upper = cv::Scalar(180, 255, 255);            
+
+            // IGVC Night
+            // white_mask_hsv_lower = cv::Scalar(0, 0, 208);
+            // white_mask_hsv_upper = cv::Scalar(43, 255, 255);
+            // yellow_mask_lower = cv::Scalar(0, 117, 88); 
+            // yellow_mask_upper = cv::Scalar(180, 255, 255);            
 
             // Inside workshop
             // white_mask_hsv_lower = cv::Scalar(0, 0, 255);

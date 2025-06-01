@@ -60,19 +60,23 @@ public:
     }
 
 private:
-    void conditional_publish() {
-        if(!running) {
-            map_pub->publish(*white_map_msg);
-        } else {
-            publish_map();
-        }
-    }
+    // void conditional_publish() {
+    //     if(!running) {
+    //         map_pub->publish(*white_map_msg);
+    //     } else {
+    //         publish_map();
+    //     }
+    // }
     
     void whiteMapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
     {
         white_map_recv = true;
         white_map_msg = msg;
-        conditional_publish();
+        if(white_map_recv && odom_recv && yellow_map_recv) {
+            publish_map(running);
+        } else {
+            publish_map(false);
+        }
     }
 
     void yellowMapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
@@ -90,6 +94,14 @@ private:
     // OPTIMIZED: Radial search with early termination
     bool get_nearest_point_bfs(const std::array<int, 2> src, const nav_msgs::msg::OccupancyGrid::SharedPtr map, std::array<int, 2>& dst) {
         // Early exit if source is already occupied  
+        if (!map) return false;
+        
+        // Check bounds for source
+        if (src[0] < 0 || src[0] >= map->info.width || 
+            src[1] < 0 || src[1] >= map->info.height) {
+            return false;
+        }
+        
         const int src_index = src[1] * map->info.width + src[0];
         if(map->data[src_index] > 0) {
             dst = src;
@@ -303,7 +315,7 @@ private:
     }
 
 
-    void publish_map()
+    void publish_map(bool condition)
     {
         /*
         Find nearest yellow lane point
@@ -311,14 +323,28 @@ private:
         Find nearest yellow lane point from white lane point
         Clear 2m grid radius of white points around 
         */
+        if (!white_map_msg || !yellow_map_msg || !odom_msg) {
+           RCLCPP_WARN(this->get_logger(), "Missing required map or odometry data");
+            return;
+        }
         std::array<double, 2> odom = {odom_msg->pose.pose.position.x, odom_msg->pose.pose.position.y};
         std::array<int, 2> odom_grid = convert_to_grid_coords(odom, white_map_msg);
         std::array<int, 2> nearest_yellow, nearest_white;
-        get_nearest_point_bfs(odom_grid, yellow_map_msg, nearest_yellow);
-        bool status = extendedBFS(yellow_map_msg, white_map_msg, nearest_yellow, 2.0, nearest_white);
-        if(status) {
-            nav_msgs::msg::OccupancyGrid map = clearRadiusAroundPoint(white_map_msg, nearest_white, 2.85);
-            map_pub->publish(map);
+        bool status1 = get_nearest_point_bfs(odom_grid, yellow_map_msg, nearest_yellow);
+        if(!status1) {
+            map_pub->publish(*white_map_msg);
+        }
+        bool status2 = extendedBFS(yellow_map_msg, white_map_msg, nearest_yellow, 2.0, nearest_white);
+        if(status2) {
+            if(condition) {
+                nav_msgs::msg::OccupancyGrid map = clearRadiusAroundPoint(white_map_msg, nearest_white, 2.85);
+                map_pub->publish(map);
+            } else {
+                nav_msgs::msg::OccupancyGrid map = clearRadiusAroundPoint(white_map_msg, nearest_white, 1);
+                map_pub->publish(map);
+            }
+        } else {
+            map_pub->publish(*white_map_msg);
         }
     }
 
@@ -329,7 +355,7 @@ private:
     {
         running = request->data;
 
-        conditional_publish();
+        publish_map(running);
     
         response->success = true;
     }

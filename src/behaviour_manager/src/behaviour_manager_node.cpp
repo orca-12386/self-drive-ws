@@ -469,6 +469,7 @@ public:
         this->client_ = rclcpp_action::create_client<interface_type>(node, action_topic, client_cb_group);
         this->node = node;
         result_recv = false;
+        aborted_recv = false;
         this->action_topic = action_topic;
     }
 
@@ -477,6 +478,8 @@ public:
             RCLCPP_ERROR(node->get_logger(), "Action server not available.");
             return;
         }
+        last_goal_msg = goal_msg;
+        last_send_goal_options = send_goal_options;
 
         result_recv = false;
 
@@ -489,6 +492,10 @@ public:
     void wait_for_result() {
         while(!this->check_result_recv()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if(aborted_recv) {
+            aborted_recv = false;
+            this->send_goal(last_goal_msg, last_send_goal_options);
         }
     }
 
@@ -516,6 +523,7 @@ private:
                 break;
             case rclcpp_action::ResultCode::ABORTED:
                 RCLCPP_ERROR(node->get_logger(), "Goal was aborted");
+                aborted_recv = true;
                 return;
             case rclcpp_action::ResultCode::CANCELED:
                 RCLCPP_ERROR(node->get_logger(), "Goal was canceled");
@@ -526,11 +534,13 @@ private:
         }
     }
 
-    bool result_recv;
+    bool result_recv, aborted_recv;
     rclcpp::Node* node;
     typename rclcpp_action::Client<interface_type>::SharedPtr client_;
     rclcpp::CallbackGroup::SharedPtr client_cb_group;
     std::string action_topic;
+    typename interface_type::Goal last_goal_msg;
+    typename rclcpp_action::Client<interface_type>::SendGoalOptions last_send_goal_options;
 };
 
 
@@ -668,12 +678,12 @@ public:
                 break;
             case 2:
                 detection_limits = {
-                    {"traffic_drum", 2},
+                    {"traffic_drum", 3},
                 };
                 break;
             case 3:
                 detection_limits = {
-                    {"traffic_drum", 2},
+                    {"traffic_drum", 3},
                 };
                 break;
             case 4:
@@ -806,10 +816,13 @@ private:
 
     void left_turn() {
         if(!done) {
-            left_turn_action();
-            done = true;
+            if(check_intersection()) {
+                done = true;
+                stop_intersection_action();
+                left_turn_action();
+            }
         }
-        if(is_detected.at("traffic_drum")) {
+        else if(is_detected.at("traffic_drum")) {
             stop_in_lane_action();
             rclcpp::shutdown();
         } else {
@@ -820,10 +833,12 @@ private:
     }
 
     void right_turn() {
-        if(check_intersection() && !done) {
-            done = true;
-            // stop_intersection_action();
-            right_turn_action();
+        if(!done) {
+            if(check_intersection()) {
+                done = true;
+                stop_intersection_action();
+                right_turn_action();
+            }
         }
         else if(is_detected.at("traffic_drum")) {
             stop_in_lane_action();

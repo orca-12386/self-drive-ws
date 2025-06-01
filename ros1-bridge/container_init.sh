@@ -14,7 +14,7 @@ container_count=0
 IFS=';' read -ra CONTAINER_CMDS <<< "$CONTAINER_COMMANDS"
 
 for cmd in "${CONTAINER_CMDS[@]}"; do
-    IFS='|' read -r name command <<< "$cmd"
+    IFS='~' read -r name command <<< "$cmd"
     
     if [ $container_count -eq 0 ]; then
         # First command goes to the first pane

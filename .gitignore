@@ -5,7 +5,6 @@ log/
 old_packages/
 __pycache__/
 *.pyc
-manas_expo_nova/
 os-122220002210-metadata.json
 *.gv
 *.pdf

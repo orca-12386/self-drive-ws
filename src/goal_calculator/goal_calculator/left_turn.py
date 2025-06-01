@@ -329,7 +329,10 @@ class LeftTurnNode(Node):
         if goal is None:
             return False
         distance = math.sqrt((goal.pose.position.x - self.bot_position.x)**2 + (goal.pose.position.y - self.bot_position.y)**2)
-        return distance < 0.2
+        self.get_logger().info(str(goal))
+        self.get_logger().info(str(self.bot_position))
+        self.get_logger().info(str(distance))
+        return distance < 2
 
     async def execute_callback(self, goal_handle):
         self.get_logger().info("Executing Left Turn")

@@ -1,15 +1,16 @@
 #!/bin/bash
 # Configuration - easily modify which commands to run
-# Format: "command_name|command_to_run|container_or_local"
+# Format: "command_name~command_to_run~container_or_local"
 COMMANDS=(
     # Local commands (outside container)
-    "ros1_bridge|source install/setup.bash && ros2 run ros1_bridge dynamic_bridge --bridge-all-topics|local"
-    "launcher|sleep 4 && source install/setup.bash && ros2 launch launcher main.launch.py|local"
-    "teleop_control|sleep 6 && source install/setup.bash && ./steve_compy_ros2|local"
+    "ros1_bridge~source install/setup.bash && ros2 run ros1_bridge dynamic_bridge --bridge-all-topics~local"
+    "launcher~sleep 4 && source install/setup.bash && ros2 launch launcher main.launch.py | grep behaviour_manager~local"
+    "steve_com~sleep 6 && source install/setup.bash && ./steve_compy_ros2~local"
+    "teleop_control~sleep 6 && source install/setup.bash && ros2 run manas_expo_nova teleop_control~local"
     # Container commands (inside Docker)
-    # "roscore|source /dvolume/devel/setup.bash && roscore|container"
-    "zed_wrapper|sleep 2 && source /dvolume/devel/setup.bash && roslaunch zed_wrapper zed_no_tf.launch|container"
-    "move_base|sleep 8 && source /dvolume/devel/setup.bash && roslaunch navigation move_base.launch|container"
+    # "roscore~source /dvolume/devel/setup.bash && roscore~container"
+    "zed_wrapper~sleep 2 && source /dvolume/devel/setup.bash && roslaunch zed_wrapper zed_no_tf.launch~container"
+    "move_base~sleep 8 && source /dvolume/devel/setup.bash && roslaunch navigation move_base.launch~container"
 )
 
 # Set session name
@@ -26,7 +27,7 @@ local_count=0
 tmux rename-window -t $SESSION:0 "local"
 
 for cmd in "${COMMANDS[@]}"; do
-    IFS='|' read -r name command environment <<< "$cmd"
+    IFS='~' read -r name command environment <<< "$cmd"
     if [ "$environment" == "local" ]; then
         if [ $local_count -eq 0 ]; then
             # First local command goes to the first pane
@@ -63,7 +64,7 @@ container_count=0
 IFS=';' read -ra CONTAINER_CMDS <<< "$CONTAINER_COMMANDS"
 
 for cmd in "${CONTAINER_CMDS[@]}"; do
-    IFS='|' read -r name command <<< "$cmd"
+    IFS='~' read -r name command <<< "$cmd"
     
     if [ $container_count -eq 0 ]; then
         # First command goes to the first pane
@@ -90,13 +91,13 @@ chmod +x "$CONTAINER_INIT_SCRIPT"
 # Build the container commands string to pass as environment variable
 CONTAINER_CMDS=""
 for cmd in "${COMMANDS[@]}"; do
-    IFS='|' read -r name command environment <<< "$cmd"
+    IFS='~' read -r name command environment <<< "$cmd"
     if [ "$environment" == "container" ]; then
         # Add to container commands with name
         if [ -z "$CONTAINER_CMDS" ]; then
-            CONTAINER_CMDS="${name}|${command}"
+            CONTAINER_CMDS="${name}~${command}"
         else
-            CONTAINER_CMDS="${CONTAINER_CMDS};${name}|${command}"
+            CONTAINER_CMDS="${CONTAINER_CMDS};${name}~${command}"
         fi
     fi
 done

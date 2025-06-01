@@ -80,7 +80,7 @@ private:
 
         nav_msgs::msg::OccupancyGrid local_map;
         local_map.header.stamp = this->now();
-        local_map.header.frame_id = "map";
+        local_map.header.frame_id = global_map_.header.frame_id;
         resolution_ = global_map_.info.resolution;
         local_map.info.resolution = resolution_;
         local_map.info.width = static_cast<unsigned int>(local_costmap_width_ / resolution_);
