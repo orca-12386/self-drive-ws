@@ -152,7 +152,13 @@ public:
         grid_origin_y = -(HEIGHT/2.0)*RESOLUTION;
 
         z_threshold = 10;
-        y_threshold = 0.1;
+        if(sim) {
+            y_lower_threshold = -5;
+            y_upper_threshold = 1;
+        } else {
+            y_lower_threshold = -1;
+            y_upper_threshold = 1;
+        }
         
         prob_mark = 0.55;
         log_odds_mark = prob_to_log_odds(prob_mark);
@@ -277,7 +283,11 @@ private:
 
     void convert_to_grid_coords(Point& p, double refx, double refy) {
         p.local_grid_x = (p.x - refx)/grid_resolution;
-        p.local_grid_y = (p.z - refy)/grid_resolution; 
+        if(sim) {
+            p.local_grid_y = (p.z - refy)/grid_resolution;
+        } else {
+            p.local_grid_y = (p.y - refy)/grid_resolution;
+        }
     }
 
     void rotate_local_grid(Point& p, double yaw) {
@@ -335,13 +345,13 @@ private:
             double d = static_cast<double>(depth_image.at<float>(pt.y, pt.x)); // Access color pixel
             Point p = convert_depth_to_point(pt, d, camera_info);
             status = true;
-            if(p.y < y_threshold && p.z<z_threshold) {
-                if(!this->sim) {
-                    status = convert_to_global_point(p);
-                }
-                if(status) {
-                    points.push_back(p);
-                }
+            status = status && p.z<z_threshold;    
+            status = status && p.y > y_lower_threshold && p.y < y_upper_threshold;
+            if(!this->sim) {
+                status = status && convert_to_global_point(p);
+            }
+            if(status) {
+                points.push_back(p);
             }
         }
 
@@ -354,13 +364,13 @@ private:
             double d = static_cast<double>(depth_image.at<float>(pt.y, pt.x));
             Point p = convert_depth_to_point(pt, d, camera_info);
             status = true;
-            if(p.y < y_threshold && p.z<z_threshold) {
-                if(!this->sim) {
-                    status = convert_to_global_point(p);
-                }
-                if(status) {
-                    antipoints.push_back(p);
-                }
+            status = status && p.z<z_threshold;    
+            status = status && p.y > y_lower_threshold && p.y < y_upper_threshold;
+            if(!this->sim) {
+                status = status && convert_to_global_point(p);
+            }
+            if(status) {
+                antipoints.push_back(p);
             }
         }
 
@@ -374,8 +384,10 @@ private:
         odom.x = odometry_msg->pose.pose.position.x;
         odom.y = odometry_msg->pose.pose.position.z;
         odom.z = odometry_msg->pose.pose.position.y;
-        convert_to_grid_coords(odom, grid_origin_x, grid_origin_y);
-        get_global_grid_coords(odom, 0, 0);
+        if(sim) {
+            convert_to_grid_coords(odom, grid_origin_x, grid_origin_y);
+            get_global_grid_coords(odom, 0, 0);
+        }
 
         tf2::Quaternion q(
             odometry_msg->pose.pose.orientation.x,
@@ -398,6 +410,7 @@ private:
                 get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
             } else {
                 convert_to_grid_coords(*it, grid_origin_x, grid_origin_y);
+                get_global_grid_coords(*it, 0, 0);
             }
             if(it->global_grid_y < grid_height && it->global_grid_y >= 0 && it->global_grid_x >= 0 && it->global_grid_x < grid_width) {
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
@@ -427,9 +440,14 @@ private:
         Timer t9 = Timer("polygon");
 
         for (auto it = begin (antipoints); it != end (antipoints); ++it) {
-            convert_to_grid_coords(*it, 0, 0);
-            rotate_local_grid(*it, yaw);
-            get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
+            if(this->sim) {
+                convert_to_grid_coords(*it, 0, 0);
+                rotate_local_grid(*it, yaw);
+                get_global_grid_coords(*it, odom.global_grid_x, odom.global_grid_y);
+            } else {
+                convert_to_grid_coords(*it, grid_origin_x, grid_origin_y);
+                get_global_grid_coords(*it, 0, 0);
+            }
             if(it->global_grid_y < grid_height && it->global_grid_y >= 0 && it->global_grid_x >= 0 && it->global_grid_x < grid_width) {
                 size_t index = (it->global_grid_y*grid_width)+it->global_grid_x;
                 instant_map_msg->data[index] = 0;
@@ -495,11 +513,19 @@ private:
         recv = recv && mask_recv; 
         recv = recv && camera_info_recv;
         recv = recv && odometry_recv;
+        bool status = true;
         if(recv) {
             if(!this->sim) {
-                transformStamped = tf_buffer_->lookupTransform("odom", depth_image_msg->header.frame_id, depth_image_msg->header.stamp);
+                try {
+                    transformStamped = tf_buffer_->lookupTransform("odom", depth_image_msg->header.frame_id, depth_image_msg->header.stamp, tf2::durationFromSec(0.1));
+                } catch(const std::exception& ex) {
+                    RCLCPP_WARN(this->get_logger(), "Could not get transform: %s", ex.what());
+                    status = false;
+                }
             }
-            get_points(mask_image_msg, depth_image_msg, camera_info_msg);
+            if(status) {
+                get_points(mask_image_msg, depth_image_msg, camera_info_msg);
+            }
         }
     }
 
@@ -539,7 +565,7 @@ private:
     double grid_origin_x;
     double grid_origin_y;
 
-    int y_threshold, z_threshold;
+    double y_lower_threshold, y_upper_threshold, z_threshold;
 
     cv_bridge::CvImagePtr depth_image_ptr, mask_image_ptr;
     cv::Mat depth_image, mask_image;

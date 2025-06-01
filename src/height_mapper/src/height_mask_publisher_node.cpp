@@ -363,7 +363,7 @@ private:
                 if (this->sim){  
                 base_point = cloudPointToBaselink(base_point);
                 }
-                if (base_point.x > 1.5 && base_point.x < 10 && std::abs(base_point.y) < 10 && base_point.z > 0.1 && base_point.z < 3.0) {
+                if (base_point.x > 1.0 && base_point.x < 6 && std::abs(base_point.y) < 10 && base_point.z > 0.1 && base_point.z < 3.0) {
                     pcl::PointXYZ pcl_p;
                     pcl_p.x = base_point.x;
                     pcl_p.y = base_point.y;
@@ -388,7 +388,7 @@ private:
         
         // RCLCPP_INFO(this->get_logger(), "Point cloud has %zu points after filtering", pcl_pc->points.size());
         
-        std::vector<pcl::PointIndices> cluster_indices = performClustering(pcl_pc, 0.1, 50, 5000);
+        std::vector<pcl::PointIndices> cluster_indices = performClustering(pcl_pc, 0.1, 50, 50000);
         
         cv::Mat labels = assignLabelsToDepthImage(cluster_indices, pixel_to_point_map, depth_image.size());
         
@@ -519,7 +519,7 @@ private:
                 float min_height = min_obstacle_heights[i];
                 RCLCPP_INFO(this->get_logger(), "MAX HEIGHT: %f", max_height);
                 RCLCPP_INFO(this->get_logger(), "MIN_HEIGHT: %f", min_height);
-                RCLCPP_INFO(this->get_logger(), "HEIGHT: %f", abs(max_height - min_height));
+                RCLCPP_INFO(this->get_logger(), "HEIGHT %d : %f",i, abs(max_height - min_height));
                 for (const auto& obj_type : object_types) {
                     if (abs(max_height - min_height) > obj_type.min_height && abs(max_height - min_height) < obj_type.max_height) {
                         obstacle_types[i] = obj_type.name;
@@ -762,9 +762,9 @@ private:
         msg.header.stamp = this->now();
         msg.header.frame_id = "odom";  
         
-        // RCLCPP_INFO(this->get_logger(), "x: %f to %f", minx, maxx);
-        // RCLCPP_INFO(this->get_logger(), "y: %f to %f", miny, maxy);
-        // RCLCPP_INFO(this->get_logger(), "z: %f to %f", minz, maxz);
+        RCLCPP_INFO(this->get_logger(), "x: %f to %f", minx, maxx);
+        RCLCPP_INFO(this->get_logger(), "y: %f to %f", miny, maxy);
+        RCLCPP_INFO(this->get_logger(), "z: %f to %f", minz, maxz);
 
         
         pub->publish(msg);

@@ -59,7 +59,7 @@ private:
     geometry_msgs::msg::TransformStamped transform;
     transform.header.stamp = now();
     transform.header.frame_id = "base_link";
-    transform.child_frame_id = "zed_camera_link";
+    transform.child_frame_id = "zed2i_base_link";
 
     tf2::Quaternion corrected_orientation;
     corrected_orientation.setRPY(roll, avg_pitch, 0.0);

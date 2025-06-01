@@ -451,7 +451,7 @@ private:
 
 
     bool validate_goal(std::array<double, 2> goal) {
-        bool angle_condition = calculate_goal_angle(goal, goals) > 120;
+        bool angle_condition = calculate_goal_angle(goal, goals) > 110;
         std::array<int, 2> goal_grid = convert_to_grid_coords(goal, map1_msg);
         bool obstacle1_condition = map1_msg->data[goal_grid[1]*map1_msg->info.width + goal_grid[0]] <= 0;
         bool obstacle2_condition = map2_msg->data[goal_grid[1]*map2_msg->info.width + goal_grid[0]] <= 0;
