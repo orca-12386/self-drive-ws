@@ -1,4 +1,4 @@
-sim: false
+sim: true
 
 detectors:
   enable: true
@@ -10,5 +10,5 @@ goal_calculator:
   enable: true # for goal calculators
 
 behaviour_manager: # for automated actions
-  enable: true
+  enable: false
   code: 1

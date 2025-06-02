@@ -817,7 +817,7 @@ private:
     void left_turn() {
         if(!done) {
             // if(check_intersection()) {
-            //     done = true;
+                done = true;
             //     stop_intersection_action();
                 left_turn_action();
             // }
@@ -835,7 +835,7 @@ private:
     void right_turn() {
         if(!done) {
             // if(check_intersection()) {
-            //     done = true;
+                done = true;
             //     stop_intersection_action();
                 right_turn_action();
             // }

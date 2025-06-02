@@ -37,8 +37,8 @@ public:
         this->declare_parameter<std::string>("color_sub_topic", "/zed/zed_node/rgb/image_rect_color");
         this->declare_parameter<std::string>("depth_sub_topic", "/zed/zed_node/depth/depth_registered");
         this->declare_parameter<std::string>("camera_info_sub_topic", "/zed/zed_node/rgb/camera_info");
-        this->declare_parameter<std::string>("barrel_point_pub_topic", "/barrel/closest_point");
-        this->declare_parameter<std::string>("mask_pub_topic", "/barrel/mask");
+        this->declare_parameter<std::string>("barrel_point_pub_topic", "/detector/traffic_drum/coordinates");
+        this->declare_parameter<std::string>("mask_pub_topic", "/detector/traffic_drum/mask");
         
         // HSV filter parameters
         this->declare_parameter<int>("hsv_h_min", 0);

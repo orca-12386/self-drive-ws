@@ -198,7 +198,7 @@ private:
         goal_pose_msg->pose.orientation.y = 0.0;
 
         toggle_srv = this->create_service<interfaces::srv::LaneFollowToggle>("toggle_lane_follow", std::bind(&LaneFollowerNode::toggle_lane_follow, this, std::placeholders::_1, std::placeholders::_2));
-        running = true;
+        running = false;
         start = true;
     }
 

@@ -187,13 +187,11 @@ def generate_launch_description():
             )
         ]
         launch_sensors = [
-            # transforms_launch,
             declare_sensor_hostname,
             declare_pointcloud_topic,
             declare_imu_topic,
             driver_launch,
             dlo_launch,
-            # zed_no_tf_launch,
         ]
 
     launch_lane_masker = [
@@ -550,8 +548,7 @@ def generate_launch_description():
         launch_description.extend(lidar_tf)
         launch_description.extend(base_link_lidar_tf)
         launch_description.extend(map_odom_tf)
-        launch_description.extend(launch_sensors)
-        # launch_description.extend(launch_odom_tf)
+        # launch_description.extend(launch_sensors)
 
     launch_description.extend(launch_topic_remapper)
     launch_description.extend(launch_pose_publishers)

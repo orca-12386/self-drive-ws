@@ -102,7 +102,7 @@ private:
             // white_mask_hsv_upper = cv::Scalar(85, 10, 255);
             // yellow_mask_lower = cv::Scalar(50, 0, 230); 
             // yellow_mask_upper = cv::Scalar(180, 255, 255);
-
+            
             // Late Evening
             // white_mask_hsv_lower = cv::Scalar(0, 0, 230);
             // white_mask_hsv_upper = cv::Scalar(180, 40, 255);
@@ -128,11 +128,16 @@ private:
             // yellow_mask_upper = cv::Scalar(180, 255, 255);            
 
             // IGVC Afternoon
+            // white_mask_hsv_lower = cv::Scalar(0, 0, 180);
+            // white_mask_hsv_upper = cv::Scalar(180, 80, 255);
+            // yellow_mask_lower = cv::Scalar(0, 102, 214); 
+            // yellow_mask_upper = cv::Scalar(100, 255, 255);            
+
+            //IGVC EVENING
             white_mask_hsv_lower = cv::Scalar(0, 0, 180);
             white_mask_hsv_upper = cv::Scalar(180, 80, 255);
-            yellow_mask_lower = cv::Scalar(0, 102, 224); 
-            yellow_mask_upper = cv::Scalar(180, 255, 255);            
-
+            yellow_mask_lower = cv::Scalar(0, 102, 214); 
+            yellow_mask_upper = cv::Scalar(107, 255, 255);   
             // IGVC Night
             // white_mask_hsv_lower = cv::Scalar(0, 0, 208);
             // white_mask_hsv_upper = cv::Scalar(43, 255, 255);

@@ -1,14 +1,20 @@
 #!/bin/bash
 # Configuration - easily modify which commands to run
 # Format: "command_name~command_to_run~container_or_local"
+BEHAVIOUR_CODE=$1
+
 COMMANDS=(
+    
     # Local commands (outside container)
     "ros1_bridge~source install/setup.bash && ros2 run ros1_bridge dynamic_bridge --bridge-all-topics~local"
-    "launcher~sleep 4 && source install/setup.bash && ros2 launch launcher main.launch.py | grep -e behaviour_manager -e barrel_detector~local"
-    "steve_com~sleep 6 && source install/setup.bash && ./steve_compy_ros2~local"
+    "ouster~sleep 4 && source install/setup.bash && ros2 launch ouster_ros sensor.launch.xml sensor_hostname:=os-122220002210.local~local"
+    "dlo~sleep 4 && source install/setup.bash && ros2 launch direct_lidar_odometry dlo.launch.py rviz:=false pointcloud_topic:=/lidar/points imu_topic:=/lidar/imu~local"
+    "launcher~sleep 6 && source install/setup.bash && ros2 launch launcher main.launch.py | grep -e barrel_detector~local"
+    # "steve_com~sleep 6 && source install/setup.bash && ./steve_compy_ros2~local"
     "teleop_control~sleep 6 && source install/setup.bash && ros2 run manas_expo_nova teleop_control~local"
+    "behaviour_manager~sleep 4 && source install/setup.bash && ros2 run behaviour_manager behaviour_manager_node behaviour_code:=$BEHAVIOUR_CODE~local"
+
     # Container commands (inside Docker)
-    # "roscore~source /dvolume/devel/setup.bash && roscore~container"
     "zed_wrapper~sleep 2 && source /dvolume/devel/setup.bash && roslaunch zed_wrapper zed_no_tf.launch~container"
     "move_base~sleep 8 && source /dvolume/devel/setup.bash && roslaunch navigation move_base.launch~container"
 )
