@@ -252,7 +252,7 @@ private:
         return std::log(probability / (1.0 - probability));
     }
     
-    Point convert_depth_to_point(double u, double v, const double& depth, const sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
+    bool convert_depth_to_point(double u, double v, const double& depth, const sensor_msgs::msg::CameraInfo::SharedPtr camera_info, Point odom_point) {
         double fx = camera_info->k[0]; 
         double fy = camera_info->k[4];
         double cx = camera_info->k[2];
@@ -262,31 +262,22 @@ private:
         double y = ((v-cy)*z)/fy;
 
         geometry_msgs::msg::PointStamped point_in, point_out;
-        point_in.header.frame_id = "base_link";
+        point_in.header.frame_id = depth_image_msg->header.frame_id;
         point_in.header.stamp = depth_image_msg->header.stamp;
         point_in.point.x = x;
         point_in.point.y = y;
         point_in.point.z = z;
         
-        if (!this->sim){
-            Point p;
-            try {
-                tf2::doTransform(point_in, point_out, transformStamped);
-                p = {
-                    point_out.point.x,
-                    point_out.point.y,
-                    point_out.point.z
-                };
-            }
-            catch (tf2::TransformException &ex) {
-                RCLCPP_WARN(this->get_logger(), "Could not transform point: %s", ex.what());
-                // Return original point if transform fails
-                p = {x, y, z};
-            }
-            return p;
-        } else {
-            Point p = {x, y, z};
-            return p;
+        try {
+            // Transform to odom frame
+            tf2::doTransform(point_in, point_out, transformStamped);
+            odom_point.x = point_out.point.x;
+            odom_point.y = point_out.point.y;
+            odom_point.z = point_out.point.z;
+            return true;
+        } catch (tf2::TransformException& ex) {
+            RCLCPP_WARN(this->get_logger(), "Could not transform point: %s", ex.what());
+            return false;
         }
     }
 
@@ -358,8 +349,10 @@ private:
                 if (!std::isfinite(depth) || depth <= 0) {
                     continue;
                 }
-
-                Point base_point = convert_depth_to_point(v, u, depth, camera_info);
+                Point base_point;
+                if (!convert_depth_to_point(v, u, depth, camera_info, base_point)){
+                    continue;
+                }
                 if (this->sim){  
                 base_point = cloudPointToBaselink(base_point);
                 }
@@ -403,7 +396,10 @@ private:
                 if (label > 0) {
                     double depthvalue = static_cast<double>(depth_image.at<float>(i, j));
                     if (std::isfinite(depthvalue) && depthvalue > 0) {
-                        Point base_point = convert_depth_to_point(j, i, depthvalue, camera_info);
+                        Point base_point;
+                        if (!convert_depth_to_point(j, i, depthvalue, camera_info, base_point)){
+                            continue;
+                        }
                         if (this->sim){
                         base_point = cloudPointToBaselink(base_point);
                         }
@@ -566,7 +562,10 @@ private:
                                 if (j > stats[1]) stats[1] = j;
                                 if (stats[2] == -1 || i < stats[2]) stats[2] = i;
                                 if (i > stats[3]) stats[3] = i;
-                                Point base_point = convert_depth_to_point(j, i, depthvalue, camera_info);
+                                Point base_point;
+                                if (!convert_depth_to_point(j, i, depthvalue, camera_info, base_point)){
+                                    continue;
+                                }
                                 if (this->sim){
                                     base_point = cloudPointToBaselink(base_point);
                                 }
@@ -719,8 +718,10 @@ private:
                     continue;
                 }
 
-                
-                Point p = convert_depth_to_point(u, v, depth_value, camera_info);
+                Point p;
+                if (!convert_depth_to_point(u, v, depth_value, camera_info, p)){
+                    continue;
+                }
                 
                 pt.x = static_cast<float>(p.x);
                 pt.y = static_cast<float>(p.y);
@@ -776,8 +777,10 @@ private:
         bool recv = rgb_recv && depth_recv && camera_info_recv; 
         if (recv) {
             try {
-                if (!this->sim){
+                try{
                     transformStamped = tf_buffer_->lookupTransform("odom", depth_image_msg->header.frame_id, depth_image_msg->header.stamp);
+                } catch (tf2::TransformException& ex){
+                    transformStamped = tf_buffer ->lookupTransform("odom", depth_image_msg->header.frame_id, tf2::TimePointZero);
                 }
                 publish_mask(rgb_image_msg, depth_image_msg, camera_info_msg);
                 publish_pointcloud(depth_image_msg, camera_info_msg, pointcloud_pub);
