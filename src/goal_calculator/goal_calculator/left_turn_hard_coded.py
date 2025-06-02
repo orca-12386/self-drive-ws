@@ -69,12 +69,11 @@ class LeftTurnHardCoded(Node):
 
     def calculate_intermediate_goal(self):
         bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
-        print(bot_x, bot_y)
         bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
-        offset1_yaw = round(bot_yaw/(math.pi/2)) * (math.pi / 2)
+        offset1_yaw = bot_yaw
         self.lane_direction = offset1_yaw
         offset1_yaw = offset1_yaw + math.pi/2
-        offset1 = 2
+        offset1 = 6
         offset1 = self.metres_to_grid(offset1)
         goal_x = bot_x + offset1 * math.cos(offset1_yaw)
         goal_y = bot_y + offset1 * math.sin(offset1_yaw)
@@ -82,7 +81,6 @@ class LeftTurnHardCoded(Node):
         offset2 = 5
         offset2 = self.metres_to_grid(offset2)
         offset2_yaw = offset1_yaw - math.pi/2
-        print(offset2_yaw)
         goal_x = goal_x + offset2 * math.cos(offset2_yaw)
         goal_y = goal_y + offset2 * math.sin(offset2_yaw)
 
@@ -107,14 +105,14 @@ class LeftTurnHardCoded(Node):
 
 
     def calculate_final_goal(self):
-        offset3 = 6
+        offset3 = 7
         offset3 = self.metres_to_grid(offset3)
         offset3_yaw = self.lane_direction + math.pi/2
         goal_x, goal_y = self.world_to_map(self.goal_pose.pose.position.x, self.goal_pose.pose.position.y)
         goal_x = goal_x + offset3 * math.cos(offset3_yaw)
         goal_y = goal_y + offset3 * math.sin(offset3_yaw)
 
-        offset4 = 1
+        offset4 = 1.5
         offset4 = self.metres_to_grid(offset4)
         offset4_yaw = offset3_yaw - math.pi/2
         goal_x = goal_x + offset4 * math.cos(offset4_yaw)

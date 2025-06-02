@@ -68,11 +68,9 @@ class RightTurnHardCoded(Node):
 
     def calculate_goal(self):
         bot_x, bot_y = self.world_to_map(self.bot_position.x, self.bot_position.y)
-        print(bot_x, bot_y)
         bot_yaw = self.get_yaw_from_quaternion(self.bot_orientation)
-        offset1_yaw = round(bot_yaw/(math.pi/2)) * (math.pi / 2)
-        print(offset1_yaw)
-        offset1 = 4
+        offset1_yaw = bot_yaw
+        offset1 = 4.5
         offset1 = self.metres_to_grid(offset1)
         goal_x = bot_x + offset1 * math.cos(offset1_yaw)
         goal_y = bot_y + offset1 * math.sin(offset1_yaw)
@@ -80,7 +78,6 @@ class RightTurnHardCoded(Node):
         offset2 = 4.5
         offset2 = self.metres_to_grid(offset2)
         offset2_yaw = offset1_yaw - math.pi/2
-        print(offset2_yaw)
         goal_x = goal_x + offset2 * math.cos(offset2_yaw)
         goal_y = goal_y + offset2 * math.sin(offset2_yaw)
 
