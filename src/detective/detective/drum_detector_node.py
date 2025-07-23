@@ -10,6 +10,7 @@ import tf2_ros
 import tf2_geometry_msgs
 import rclpy
 import time
+from rclpy.time import Time
 
 def euler_to_quat(euler):
     return Rotation.from_euler('xyz', euler).as_quat()
@@ -50,7 +51,7 @@ class TrafficDrumsDetector(BaseDetector):
         self.bot_orientation = msg.pose.pose.orientation
         try:
             if not self.sim:
-                self.transform_stamped = self.tf_buffer.lookup_transform("map", self.depth_frame_id, self.depth_stamp)
+                self.transform_stamped = self.tf_buffer.lookup_transform("odom", self.depth_frame_id, Time())
         except tf2_ros.TransformException as e:
             self.get_logger().error(f"Transform lookup failed: {e}")
             return

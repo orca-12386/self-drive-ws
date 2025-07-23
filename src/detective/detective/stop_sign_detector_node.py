@@ -51,7 +51,7 @@ class StopSignDetector(BaseDetector):
         self.bot_orientation = msg.pose.pose.orientation
 
         try:
-            self.transfoerm_stamped = self.tf_buffer.lookup_transform("map", self.depth_frame_id, self.depth_stamp)
+            self.transform_stamped = self.tf_buffer.lookup_transform("map", self.depth_frame_id, rclpy.time.Time())
         except tf2_ros.TransformException as e:
             self.get_logger().error(f"Transform lookup failed: {e}")
             return

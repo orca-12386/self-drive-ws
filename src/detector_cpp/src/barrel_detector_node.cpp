@@ -42,11 +42,11 @@ public:
         
         // HSV filter parameters
         this->declare_parameter<int>("hsv_h_min", 0);
-        this->declare_parameter<int>("hsv_s_min", 160);
+        this->declare_parameter<int>("hsv_s_min", 179);
         this->declare_parameter<int>("hsv_v_min", 0);
-        this->declare_parameter<int>("hsv_h_max", 25);
+        this->declare_parameter<int>("hsv_h_max", 13);
         this->declare_parameter<int>("hsv_s_max", 255);
-        this->declare_parameter<int>("hsv_v_max", 120);
+        this->declare_parameter<int>("hsv_v_max", 255);
         
         // Morphological operations parameters
         this->declare_parameter<int>("erode_kernel_size", 3);

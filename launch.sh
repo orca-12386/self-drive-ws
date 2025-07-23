@@ -4,7 +4,6 @@
 BEHAVIOUR_CODE=$1
 
 COMMANDS=(
-    
     # Local commands (outside container)
     "ros1_bridge~source install/setup.bash && ros2 run ros1_bridge dynamic_bridge --bridge-all-topics~local"
     "ouster~sleep 4 && source install/setup.bash && ros2 launch ouster_ros sensor.launch.xml sensor_hostname:=os-122220002210.local~local"
@@ -12,11 +11,12 @@ COMMANDS=(
     "launcher~sleep 6 && source install/setup.bash && ros2 launch launcher main.launch.py | grep -e barrel_detector~local"
     # "steve_com~sleep 6 && source install/setup.bash && ./steve_compy_ros2~local"
     "teleop_control~sleep 6 && source install/setup.bash && ros2 run manas_expo_nova teleop_control~local"
-    "behaviour_manager~sleep 4 && source install/setup.bash && ros2 run behaviour_manager behaviour_manager_node behaviour_code:=$BEHAVIOUR_CODE~local"
+    "behaviour_manager~sleep 4 && source install/setup.bash && ros2 run behaviour_manager behaviour_manager_node --ros-args -p behaviour_code:=$BEHAVIOUR_CODE~local"
 
     # Container commands (inside Docker)
     "zed_wrapper~sleep 2 && source /dvolume/devel/setup.bash && roslaunch zed_wrapper zed_no_tf.launch~container"
-    "move_base~sleep 8 && source /dvolume/devel/setup.bash && roslaunch navigation move_base.launch~container"
+    "move_base~sleep 5 && source /dvolume/devel/setup.bash && roslaunch navigation move_base.launch~container"
+    # "stop_sign_detector_node~sleep 6 && source /dvolume/devel/setup.bash && ros2 run stop_sign_detector stop_sign_detector_node~container"
 )
 
 # Set session name

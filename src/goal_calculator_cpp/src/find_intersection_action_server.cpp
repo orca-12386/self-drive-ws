@@ -85,7 +85,7 @@ private:
   
   geometry_msgs::msg::PoseStamped current_goal_;
   bool goal_reached_ = false;
-  const double goal_threshold_ = 0.6;  
+  const double goal_threshold_ = 1.0;  
 
   void map1_callback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
   {

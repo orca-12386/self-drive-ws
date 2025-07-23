@@ -673,12 +673,12 @@ public:
                 break;
             case 1:
                 detection_limits = {
-                    {"traffic_drum", 1.5},
+                    {"traffic_drum", 2.5},
                 };
                 break;
             case 2:
                 detection_limits = {
-                    {"traffic_drum", 3},
+                    {"traffic_drum", 2},
                 };
                 break;
             case 3:
@@ -818,7 +818,7 @@ private:
         if(!done) {
             // if(check_intersection()) {
                 done = true;
-            //     stop_intersection_action();
+                // stop_intersection_action();
                 left_turn_action();
             // }
         }
@@ -835,9 +835,10 @@ private:
     void right_turn() {
         if(!done) {
             // if(check_intersection()) {
-                done = true;
+            //     done = true;
             //     stop_intersection_action();
-                right_turn_action();
+            //     stop_in_lane_action();
+            right_turn_action();
             // }
         }
         else if(is_detected.at("traffic_drum")) {
@@ -1073,6 +1074,7 @@ private:
         this->declare_parameter<int>("behaviour_code", 0); 
 
         int behaviour_code = this->get_parameter("behaviour_code").as_int();
+        log(std::string("Pattern: ")+std::to_string(behaviour_code));
 
         pattern = std::make_unique<Pattern>(
             behaviour_code,
