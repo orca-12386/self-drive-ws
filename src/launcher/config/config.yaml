@@ -2,7 +2,7 @@ sim: false
 
 detectors:
   enable: true
-  mode: 2 # 0 for YOLO, 1 for height (pothole and stop always use YOLO/RGB), 2 for qual
+  mode: 1 # 0 for YOLO, 1 for height (pothole and stop always use YOLO/RGB), 2 for qual
   stop_sign:
     text: "STOP"
 
