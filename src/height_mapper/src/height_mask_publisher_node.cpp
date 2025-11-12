@@ -780,7 +780,7 @@ private:
                 try{
                     transformStamped = tf_buffer_->lookupTransform("odom", depth_image_msg->header.frame_id, depth_image_msg->header.stamp);
                 } catch (tf2::TransformException& ex){
-                    transformStamped = tf_buffer ->lookupTransform("odom", depth_image_msg->header.frame_id, tf2::TimePointZero);
+                    transformStamped = tf_buffer_ ->lookupTransform("odom", depth_image_msg->header.frame_id, tf2::TimePointZero);
                 }
                 publish_mask(rgb_image_msg, depth_image_msg, camera_info_msg);
                 publish_pointcloud(depth_image_msg, camera_info_msg, pointcloud_pub);

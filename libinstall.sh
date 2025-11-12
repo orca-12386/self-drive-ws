@@ -1,6 +1,10 @@
-pip install easyocr
-pip install numpy
-pip install scipy scikit-learn
-pip install statistics
-pip install asyncio
-sudo apt install tf-transformations
+pip install --no-cache-dir numpy==1.26.4
+pip install --no-cache-dir scipy==1.13.1
+pip install --no-cache-dir scikit-learn==1.5.0
+pip install --no-cache-dir torch==2.3.0
+pip install --no-cache-dir easyocr==1.7.2
+pip install --no-cache-dir ultralytics==8.3.97
+pip install --no-cache-dir statistics
+pip install --no-cache-dir asyncio
+pip install --no-cache-dir pyserial
+sudo apt install ros-humble-tf-transformations

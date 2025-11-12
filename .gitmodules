@@ -6,7 +6,7 @@
 	url = git@github.com:orca-12386/self_drive_course.git
 [submodule "ouster-ros"]
 	path = src/ouster-ros
-	url = https://github.com/ouster-lidar/ouster-ros.git
+	url = git@github.com:ouster-lidar/ouster-ros.git
 	branch = ros2
 [submodule "src/direct_lidar_odometry"]
 	path = src/direct_lidar_odometry
@@ -16,7 +16,9 @@
 	url = git@github.com:asmit-mit/zed-ros-wrapper.git
 [submodule "src/xbox_teleop"]
 	path = src/xbox_teleop
-	url = https://github.com/orca-12386/xbox_teleop
+	url = git@github.com:orca-12386/xbox_teleop
 [submodule "src/manas_expo_nova"]
 	path = src/manas_expo_nova
 	url = git@github.com:Karthikeya819/manas_expo_nova.git
+[submodule "/home/summer/self-drive-ws/src/xbox_teleop"]
+	url = git@github.com:orca-12386/xbox_teleop
