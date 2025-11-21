@@ -1,6 +1,13 @@
 # self-drive-ws
 
-Software stack for IGVC 2025 Self Drive.
+Software stack for 32nd IGVC (Intelligent Ground Vehicle Competition) Self-Drive Challenge (Team: Project MANAS).
+
+## System Architecture Overview
+
+Full Technical Design Report available [here](https://drive.google.com/drive/folders/1Wkw5NK7srPLMnpGPInIUA12y14CPr3CD).
+
+![System Architecture](./docs/system_architecture.png)
+![Mapping Architecture](./docs/mapping_architecture.png)
 
 ## Setup
 
